@@ -8,7 +8,8 @@
     "db:down": "docker compose down"
   },
   "dependencies": {
-    "pg": "^8.13.3",
-    "@types/pg": "^8.11.10"
+    "@anthropic-ai/sdk": "^0.88.0",
+    "@types/pg": "^8.11.10",
+    "pg": "^8.13.3"
   }
 }
