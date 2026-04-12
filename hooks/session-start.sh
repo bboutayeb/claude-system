@@ -21,4 +21,14 @@ curl -sf -X POST "${SERVER_URL}/session/start" \
   -H "Content-Type: application/json" \
   -d "{\"session_id\": \"${SESSION_ID}\"}" > /dev/null 2>&1 || true
 
+# Confirmation visible — affichée dans la console Claude au démarrage
+STATUS=$(curl -sf "${SERVER_URL}/status" 2>/dev/null || echo "{}")
+API_KEY_OK=$(echo "$STATUS" | mise exec -- jq -r '.apiKey // false' 2>/dev/null || echo "false")
+
+if [ "$API_KEY_OK" = "true" ]; then
+  echo "[hooks] server OK — ANTHROPIC_API_KEY present" >&2
+else
+  echo "[hooks] server OK — ANTHROPIC_API_KEY MISSING (Haiku disabled)" >&2
+fi
+
 exit 0

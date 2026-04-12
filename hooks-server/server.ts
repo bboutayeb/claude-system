@@ -3,6 +3,7 @@ import { handlePostTool } from "./routes/post-tool"
 import { handlePreTool } from "./routes/pre-tool"
 
 const PORT = parseInt(process.env.HOOKS_PORT ?? "18766")
+const hasApiKey = Boolean(process.env.ANTHROPIC_API_KEY)
 
 async function parseBody(req: Request): Promise<unknown> {
   const text = await req.text()
@@ -21,6 +22,12 @@ const server = Bun.serve({
 
     if (req.method === "GET" && url.pathname === "/health") {
       return new Response("ok")
+    }
+
+    if (req.method === "GET" && url.pathname === "/status") {
+      return new Response(JSON.stringify({ ok: true, apiKey: hasApiKey }), {
+        headers: { "Content-Type": "application/json" },
+      })
     }
 
     if (req.method !== "POST") {
@@ -50,6 +57,5 @@ const server = Bun.serve({
   },
 })
 
-const hasApiKey = Boolean(process.env.ANTHROPIC_API_KEY)
 console.log(`[hooks-server] listening on http://127.0.0.1:${PORT}`)
 console.log(`[hooks-server] ANTHROPIC_API_KEY: ${hasApiKey ? "present" : "MISSING — Haiku calls disabled"}`)
