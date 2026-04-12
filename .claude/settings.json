@@ -1,0 +1,44 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/user/repo/hooks/session-start.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sf -X POST http://127.0.0.1:18766/pre-tool -H 'Content-Type: application/json' -d @- || true"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sf -X POST http://127.0.0.1:18766/post-tool -H 'Content-Type: application/json' -d @- || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/user/repo/hooks/session-stop.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

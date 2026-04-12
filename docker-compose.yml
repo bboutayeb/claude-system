@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: claude_system
+      POSTGRES_USER: claude
+      POSTGRES_PASSWORD: claude
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U claude -d claude_system"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

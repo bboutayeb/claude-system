@@ -1,0 +1,14 @@
+{
+  "name": "claude-system",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "hooks-server": "bun run hooks-server/server.ts",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down"
+  },
+  "dependencies": {
+    "pg": "^8.13.3",
+    "@types/pg": "^8.11.10"
+  }
+}
