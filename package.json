@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "hooks-server": "bun run hooks-server/server.ts",
+    "verify": "bun run agents/verifier.ts",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down"
   },
