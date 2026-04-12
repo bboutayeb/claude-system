@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/home/user/repo/hooks/session-start.sh"
+            "command": "/home/zaibaker/Code/Perso/IA/prompt/hooks/session-start.sh"
           }
         ]
       }
@@ -35,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/home/user/repo/hooks/session-stop.sh"
+            "command": "/home/zaibaker/Code/Perso/IA/prompt/hooks/session-stop.sh"
           }
         ]
       }

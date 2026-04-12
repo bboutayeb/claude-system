@@ -48,10 +48,10 @@ built around Claude Code. It is structured as follows:
 
 ### Environment
 
-- Repo: `/home/user/repo`
+- Repo: `/home/zaibaker/Code/Perso/IA/prompt`
 - Hooks server: `http://127.0.0.1:18766`
 - PostgreSQL: `localhost:5432`, db=`claude_system`, user=`claude`
-- Hooks server start: `cd /home/user/repo && mise exec -- bun run hooks-server/server.ts`
+- Hooks server start: `cd /home/zaibaker/Code/Perso/IA/prompt && mise exec -- bun run hooks-server/server.ts`
 
 ## SQL Conventions
 

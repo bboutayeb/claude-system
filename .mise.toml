@@ -1,3 +1,5 @@
 [tools]
 node = "22"
 bun = "latest"
+jq = "latest"
+postgres = {version = "latest", backend = "asdf:mise-plugins/mise-postgres"}

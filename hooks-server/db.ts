@@ -1,23 +1,20 @@
-import { Client } from "pg"
+import { Pool } from "pg"
 
-const client = new Client({
+const pool = new Pool({
   connectionString:
     process.env.DATABASE_URL ??
     "postgresql://claude:claude@localhost:5432/claude_system",
+  max: 5,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
 })
 
-let connected = false
-
-async function ensureConnected() {
-  if (!connected) {
-    await client.connect()
-    connected = true
-  }
-}
+pool.on("error", (err) => {
+  console.error("[db] pool error:", err.message)
+})
 
 export const db = {
   async query(text: string, values?: unknown[]) {
-    await ensureConnected()
-    return client.query(text, values)
+    return pool.query(text, values)
   },
 }
