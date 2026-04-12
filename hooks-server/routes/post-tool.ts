@@ -1,10 +1,10 @@
 import { db } from "../db"
+import { timers } from "../timers"
 
 interface PostToolPayload {
   session_id?: string
   tool_name?: string
   tool_use_id?: string
-  duration_ms?: number
   usage?: {
     input_tokens?: number
   }
@@ -12,7 +12,10 @@ interface PostToolPayload {
 
 export async function handlePostTool(body: unknown): Promise<Response> {
   const payload = body as PostToolPayload
-  const { session_id, tool_name, duration_ms } = payload
+  const { session_id, tool_name, tool_use_id } = payload
+  const start = tool_use_id ? timers.get(tool_use_id) : undefined
+  const duration_ms = start != null ? Date.now() - start : null
+  if (tool_use_id) timers.delete(tool_use_id)
 
   if (!session_id || !tool_name) {
     return new Response("missing session_id or tool_name", { status: 400 })

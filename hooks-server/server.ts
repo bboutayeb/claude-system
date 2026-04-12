@@ -1,6 +1,7 @@
 import { handleSessionStart, handleSessionStop } from "./routes/session"
 import { handlePostTool } from "./routes/post-tool"
 import { handlePreTool } from "./routes/pre-tool"
+import { handleUserPrompt } from "./routes/user-prompt"
 
 const PORT = parseInt(process.env.HOOKS_PORT ?? "18766")
 const hasApiKey = Boolean(process.env.ANTHROPIC_API_KEY)
@@ -43,6 +44,8 @@ const server = Bun.serve({
         return handleSessionStart(body)
       case "/session/stop":
         return handleSessionStop(body)
+      case "/user-prompt":
+        return handleUserPrompt(body)
       case "/pre-tool":
         return handlePreTool(body)
       case "/post-tool":
