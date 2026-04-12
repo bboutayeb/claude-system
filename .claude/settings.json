@@ -1,5 +1,15 @@
 {
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/zaibaker/Code/Perso/IA/prompt/hooks/user-prompt-submit.sh"
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [
