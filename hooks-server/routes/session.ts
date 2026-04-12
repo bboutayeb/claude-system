@@ -1,14 +1,24 @@
 import { db } from "../db"
 
 export async function handleSessionStart(body: unknown): Promise<Response> {
-  const { session_id } = body as { session_id?: string }
+  const { session_id, model, source, agent_type } = body as {
+    session_id?: string
+    model?: string
+    source?: string
+    agent_type?: string
+  }
   if (!session_id) return new Response("missing session_id", { status: 400 })
 
   await db.query(
-    "INSERT INTO sessions (id) VALUES ($1) ON CONFLICT (id) DO NOTHING",
-    [session_id]
+    `INSERT INTO sessions (id, model, source, agent_type)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (id) DO UPDATE SET
+       model      = COALESCE(EXCLUDED.model, sessions.model),
+       source     = COALESCE(EXCLUDED.source, sessions.source),
+       agent_type = COALESCE(EXCLUDED.agent_type, sessions.agent_type)`,
+    [session_id, model ?? null, source ?? null, agent_type ?? null]
   )
-  console.log(`[session] started: ${session_id}`)
+  console.log(`[session] started: ${session_id} model=${model} source=${source}`)
   return new Response("ok")
 }
 

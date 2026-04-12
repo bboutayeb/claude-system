@@ -49,7 +49,19 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
     prompt?: string
   }
 
-  if (!prompt || !isAmbiguous(prompt)) {
+  if (!prompt) {
+    return new Response("{}", { headers: { "Content-Type": "application/json" } })
+  }
+
+  const ambiguous = isAmbiguous(prompt)
+
+  // Log every prompt — fire-and-forget
+  db.query(
+    "INSERT INTO prompts (session_id, prompt_text, is_ambiguous) VALUES ($1, $2, $3)",
+    [session_id ?? null, prompt.slice(0, 2000), ambiguous]
+  ).catch(() => {})
+
+  if (!ambiguous) {
     return new Response("{}", { headers: { "Content-Type": "application/json" } })
   }
 
@@ -62,7 +74,7 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
 
   const reason = suggestion ?? FALLBACK_REASON
 
-  // Log to DB — fire-and-forget
+  // Log to ambiguities — fire-and-forget
   db.query(
     "INSERT INTO ambiguities (session_id, tool_name, prompt_text, suggestion) VALUES ($1, $2, $3, $4)",
     [session_id ?? null, null, prompt.slice(0, 500), reason]

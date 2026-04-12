@@ -5,9 +5,6 @@ interface PostToolPayload {
   session_id?: string
   tool_name?: string
   tool_use_id?: string
-  usage?: {
-    input_tokens?: number
-  }
 }
 
 export async function handlePostTool(body: unknown): Promise<Response> {
@@ -28,14 +25,9 @@ export async function handlePostTool(body: unknown): Promise<Response> {
   )
 
   await db.query(
-    `INSERT INTO tool_calls (session_id, tool_name, duration_ms, input_tokens)
-     VALUES ($1, $2, $3, $4)`,
-    [
-      session_id,
-      tool_name,
-      duration_ms ?? null,
-      payload.usage?.input_tokens ?? 0,
-    ]
+    `INSERT INTO tool_calls (session_id, tool_name, duration_ms)
+     VALUES ($1, $2, $3)`,
+    [session_id, tool_name, duration_ms ?? null]
   )
   return new Response("ok")
 }

@@ -15,11 +15,12 @@ fi
 
 # Read stdin once (Claude Code sends hook payload via stdin)
 PAYLOAD=$(cat 2>/dev/null || echo "{}")
-SESSION_ID=$(echo "$PAYLOAD" | mise exec -- jq -r '.session_id // "unknown"' 2>/dev/null || echo "unknown")
+
+BODY=$(echo "$PAYLOAD" | mise exec -- jq '{session_id, model, source, agent_type}' 2>/dev/null || echo '{}')
 
 curl -sf -X POST "${SERVER_URL}/session/start" \
   -H "Content-Type: application/json" \
-  -d "{\"session_id\": \"${SESSION_ID}\"}" > /dev/null 2>&1 || true
+  -d "$BODY" > /dev/null 2>&1 || true
 
 # Confirmation visible — affichée dans la console Claude au démarrage
 STATUS=$(curl -sf "${SERVER_URL}/status" 2>/dev/null || echo "{}")
@@ -29,6 +30,20 @@ if [ "$API_KEY_OK" = "true" ]; then
   echo "[hooks] server OK — ANTHROPIC_API_KEY present" >&2
 else
   echo "[hooks] server OK — ANTHROPIC_API_KEY MISSING (Haiku disabled)" >&2
+fi
+
+# ── Verifier contextuel (par utilisateur, sans crontab système) ──────────────
+# Lance agents/verifier.ts au plus une fois toutes les 6h, uniquement quand
+# Claude Code est ouvert. Timestamp stocké dans $XDG_CACHE_HOME (non-invasif).
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}"
+LAST_RUN_FILE="$CACHE_DIR/claude-system-verifier-last-run"
+NOW=$(date +%s)
+LAST=$(cat "$LAST_RUN_FILE" 2>/dev/null || echo 0)
+
+if (( NOW - LAST >= 21600 )); then
+  echo "$NOW" > "$LAST_RUN_FILE"
+  nohup mise exec -- bun run "$REPO_DIR/agents/verifier.ts" >> /tmp/claude-verifier.log 2>&1 &
+  echo "[hooks] verifier lancé (dernier run il y a $(( (NOW - LAST) / 3600 ))h)" >&2
 fi
 
 exit 0
