@@ -1,6 +1,6 @@
 # Roadmap v2 — suite du plan
 
-*Mis à jour le 2026-04-13*
+*Mis à jour le 2026-04-13 — notes advisor intégrées*
 
 ---
 
@@ -22,18 +22,24 @@
 Rendre `kpi_snapshots` lisible sans passer par SQL. Une page HTML avec Chart.js,
 alimentée par des routes JSON sur un serveur Bun.
 
-### Décisions à trancher avant de coder
+### Décisions architecturales
 
-1. **Port séparé ou mutualisé ?**
-   - Option A — port 18767 dédié (plan initial) : démarrage indépendant, redémarrage propre
-   - Option B — routes `/dashboard/*` ajoutées au serveur 18766 existant : un seul process à gérer
-   - Recommandation : **Option B** — le serveur 18766 est déjà lancé au SessionStart, ajouter des routes
-     est moins invasif qu'un second process.
+1. **Port : Option B retenue** — routes `/dashboard/*` ajoutées au serveur 18766 existant.
+   Le serveur est déjà lancé au SessionStart ; un second process serait plus invasif sans bénéfice réel
+   à ce stade. Si les besoins de restart indépendant apparaissent plus tard, la migration vers 18767 est
+   triviale.
 
-2. **Granularité temporelle**
-   - `kpi_snapshots` est journalier → vues "aujourd'hui / 7j / 30j" sans jointure
-   - Sub-journalier (dernière heure) → requête directe sur `sessions` et `tool_calls`
-   - Commencer par daily uniquement, ajouter le sub-journalier si utile
+   > **Note advisor** : Option A (port séparé) reste pertinente si le dashboard doit survivre à un
+   > redémarrage du serveur hooks sans impacter les hooks. À reconsidérer si le dashboard devient un
+   > outil de monitoring continu plutôt qu'une consultation ponctuelle.
+
+2. **Granularité temporelle : daily d'abord**
+   - `kpi_snapshots` est journalier → vues "aujourd'hui / 7j / 30j" sans jointure supplémentaire
+   - Sub-journalier (dernière heure) → requête directe sur `sessions` et `tool_calls` — à ajouter
+     uniquement si le besoin se confirme à l'usage
+
+   > **Note advisor** : ne pas concevoir le sub-journalier à l'avance. Les données accumulées après
+   > quelques semaines révéleront si une granularité plus fine apporte de la valeur.
 
 ### Fichiers à créer / modifier
 
@@ -76,8 +82,10 @@ les paires prompt→réponse extraites des transcripts JSONL.
 
 ### Prérequis bloquant : capturer `transcript_path`
 
-`transcript_path` arrive dans chaque payload hook (SessionStart, PreToolUse, PostToolUse, Stop)
-mais n'est jamais stocké. Le pipeline a besoin de retrouver le transcript d'une session.
+> **Note advisor** : c'est le point le plus souvent manqué. `transcript_path` arrive dans chaque
+> payload hook (SessionStart, PreToolUse, PostToolUse, Stop) mais n'est **jamais capturé ni stocké**.
+> Sans cette donnée, le pipeline quality-scorer ne peut pas retrouver les transcripts des sessions
+> passées. C'est la **première chose à implémenter** dans cette phase, avant tout scoring.
 
 **Migration 008 :**
 ```sql
@@ -89,8 +97,13 @@ ALTER TABLE sessions ADD COLUMN transcript_path TEXT;
 BODY=$(echo "$PAYLOAD" | mise exec -- jq '{session_id, model, source, agent_type, transcript_path}')
 ```
 
-**`hooks-server/routes/session.ts`** — persister dans `handleSessionStart` et `handleSessionStop`
-(Stop est le moment le plus fiable, le fichier est complet à ce stade).
+**`hooks-server/routes/session.ts`** — persister dans `handleSessionStart` ET `handleSessionStop`.
+Stop est le moment le plus fiable : le fichier JSONL est complet et flushed à ce stade.
+SessionStart permet de l'avoir dès le début si Stop ne se déclenche pas (crash, kill).
+
+> **Note advisor** : capturer dans les deux handlers par défensive — le path ne change pas en
+> cours de session, un `COALESCE(EXCLUDED.transcript_path, sessions.transcript_path)` dans l'upsert
+> suffit.
 
 ### Pipeline batch post-session (`agents/quality-scorer.ts`)
 
@@ -119,12 +132,15 @@ Déclenché manuellement ou depuis le verifier, une fois par session terminée s
 | Prompt ambigu (`is_ambiguous = true`) | -1 |
 | Session avec `output_tokens = 0` | -5 (waste) |
 
-### Quand lancer ?
+### Quand lancer la Phase 3 ?
+
+> **Note advisor** : rendre le critère d'entrée data-driven, pas subjectif. Requête à exécuter
+> avant de démarrer le travail pgvector :
 
 ```sql
--- Vérifier si on a assez de matière
 SELECT COUNT(*) FROM prompts WHERE quality_score IS NOT NULL;
--- Cible : >= 200 avant de passer à la Phase 3
+-- Cible : >= 200 pour que les résultats de similarité soient statistiquement utiles
+-- En dessous : le RAG retrouvera toujours les mêmes 5 exemples, sans signal réel
 ```
 
 ---
@@ -183,6 +199,10 @@ CREATE INDEX prompts_embedding_idx ON prompts USING hnsw (embedding vector_cosin
 
 Comparer `ambiguity_rate` et `avg_quality_score` avant/après activation du RAG
 sur une fenêtre de 30 jours. Si delta < 5%, le RAG n'apporte pas assez.
+
+> **Note advisor** : ne pas activer le RAG en production sans avoir d'abord une baseline claire.
+> Capturer `ambiguity_rate` et `avg_quality_score` sur 2 semaines sans RAG, puis comparer.
+> Le dashboard (Phase 1) rend cette comparaison lisible sans SQL.
 
 ---
 
