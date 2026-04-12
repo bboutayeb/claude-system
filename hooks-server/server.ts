@@ -50,4 +50,6 @@ const server = Bun.serve({
   },
 })
 
+const hasApiKey = Boolean(process.env.ANTHROPIC_API_KEY)
 console.log(`[hooks-server] listening on http://127.0.0.1:${PORT}`)
+console.log(`[hooks-server] ANTHROPIC_API_KEY: ${hasApiKey ? "present" : "MISSING — Haiku calls disabled"}`)
