@@ -26,7 +26,21 @@ switch (cmd) {
   }
 
   case "score": {
-    await import("./agents/quality-scorer")
+    const { runAll } = await import("./agents/quality-scorer")
+    const maxIdx = args.indexOf("--max-prompts")
+    const maxPrompts = maxIdx >= 0 ? parseInt(args[maxIdx + 1] ?? "20", 10) : 20
+    await runAll(maxPrompts)
+    break
+  }
+
+  case "score-session": {
+    const sessionId = args[0]
+    if (!sessionId) {
+      console.error("Usage: claude-monitor score-session <session-id>")
+      process.exit(1)
+    }
+    const { scoreSession } = await import("./agents/quality-scorer")
+    await scoreSession(sessionId)
     break
   }
 
@@ -81,7 +95,9 @@ Commands:
   hook <event>     Handle a Claude Code hook event (reads stdin)
   status           Show server health and config
   verify           Run task acceptance verifier
-  score            Run prompt quality scorer
+  score            Run prompt quality scorer (backfill)
+                   --max-prompts N  limit API calls (default 20)
+  score-session    Score prompts for a specific session
   version          Print version
 `)
     if (cmd && cmd !== "help" && cmd !== "--help") process.exit(1)

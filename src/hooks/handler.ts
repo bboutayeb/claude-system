@@ -130,6 +130,18 @@ async function onSessionStop(payload: Record<string, unknown>): Promise<void> {
       signal: AbortSignal.timeout(3000),
     })
   } catch {}
+
+  if (config.anthropic_api_key && sessionId !== "unknown") {
+    Bun.spawn([process.execPath, "score-session", sessionId], {
+      detached: true,
+      stdio: ["ignore", Bun.file("/tmp/claude-monitor-scorer.log"), Bun.file("/tmp/claude-monitor-scorer.log")],
+      env: {
+        ...process.env,
+        DATABASE_URL: config.db_url,
+        ANTHROPIC_API_KEY: config.anthropic_api_key,
+      },
+    }).unref()
+  }
 }
 
 async function onPreToolUse(payload: Record<string, unknown>): Promise<void> {
