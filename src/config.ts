@@ -13,12 +13,14 @@ interface Config {
   port: number
   db_url: string
   anthropic_api_key: string | null
+  haiku_cost_alert_usd: number | null
 }
 
 const DEFAULTS: Config = {
   port: 18766,
   db_url: "postgresql://claude:claude@localhost:5432/claude_system",
   anthropic_api_key: null,
+  haiku_cost_alert_usd: null,
 }
 
 function loadConfig(): Config {
@@ -34,6 +36,7 @@ function loadConfig(): Config {
     port: parseInt(process.env.HOOKS_PORT ?? String(file.port ?? DEFAULTS.port)),
     db_url: process.env.DATABASE_URL ?? file.db_url ?? DEFAULTS.db_url,
     anthropic_api_key: file.anthropic_api_key ?? process.env.ANTHROPIC_API_KEY ?? null,
+    haiku_cost_alert_usd: file.haiku_cost_alert_usd ?? null,
   }
 }
 

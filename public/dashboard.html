@@ -143,6 +143,10 @@
       <div class="card-label">Qualité moy. prompts</div>
       <div class="card-value" id="cnt-quality">—</div>
     </div>
+    <div class="card">
+      <div class="card-label">Coût Haiku (période)</div>
+      <div class="card-value" id="cnt-haiku-cost">—</div>
+    </div>
   </div>
 
   <div class="charts">
@@ -165,6 +169,10 @@
     <div class="chart-card">
       <div class="chart-title">Top outils</div>
       <canvas id="chart-tools"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Coût Haiku / jour (USD)</div>
+      <canvas id="chart-haiku-cost"></canvas>
     </div>
   </div>
 
@@ -213,16 +221,18 @@
     }
 
     async function load(days) {
-      const [kpisRes, toolsRes, promptsRes, sessionsRes] = await Promise.all([
+      const [kpisRes, toolsRes, promptsRes, sessionsRes, haikuRes] = await Promise.all([
         fetch(`/dashboard/kpis?days=${days}`),
         fetch(`/dashboard/tools?days=${days}`),
         fetch(`/dashboard/prompts?days=${days}`),
         fetch(`/dashboard/sessions?days=${days}`),
+        fetch(`/dashboard/haiku-cost?days=${days}`),
       ])
       const { rows: kpis } = await kpisRes.json()
       const { tools } = await toolsRes.json()
       const { rows: promptStats } = await promptsRes.json()
       const { sessions } = await sessionsRes.json()
+      const { rows: haikuRows, total_cost_usd: haikuTotal } = await haikuRes.json()
 
       // Compteurs today
       const today = kpis.length ? kpis[kpis.length - 1] : null
@@ -231,6 +241,7 @@
       document.getElementById('cnt-cost').textContent = today ? fmtUsd(today.estimated_cost_usd) : '—'
       const todayPrompts = promptStats.length ? promptStats[promptStats.length - 1] : null
       document.getElementById('cnt-quality').textContent = todayPrompts?.avg_quality != null ? parseFloat(todayPrompts.avg_quality).toFixed(1) + ' / 10' : '—'
+      document.getElementById('cnt-haiku-cost').textContent = haikuTotal != null ? '$' + parseFloat(haikuTotal).toFixed(5) : '—'
 
       const labels = kpis.map(r => r.snapshot_date?.slice(0, 10))
 
@@ -339,6 +350,34 @@
           scales: {
             x: { ...chartDefaults.scales.x, beginAtZero: true },
             y: { ...chartDefaults.scales.y },
+          },
+        },
+      })
+
+      makeOrUpdate('chart-haiku-cost', {
+        type: 'bar',
+        data: {
+          labels: haikuRows.map(r => r.day?.slice(0, 10)),
+          datasets: [
+            {
+              label: 'Ambiguity',
+              data: haikuRows.map(r => parseFloat(r.cost_ambiguity) || 0),
+              backgroundColor: '#f59e0b',
+            },
+            {
+              label: 'Scoring',
+              data: haikuRows.map(r => parseFloat(r.cost_scoring) || 0),
+              backgroundColor: '#6366f1',
+            },
+          ]
+        },
+        options: {
+          ...chartDefaults,
+          plugins: { legend: { display: true, labels: { color: '#94a3b8', font: { size: 11 } } } },
+          scales: {
+            ...chartDefaults.scales,
+            x: { ...chartDefaults.scales.x, stacked: true },
+            y: { ...chartDefaults.scales.y, stacked: true, beginAtZero: true, title: { display: true, text: 'USD', color: '#64748b' } },
           },
         },
       })

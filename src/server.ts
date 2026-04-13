@@ -2,7 +2,7 @@ import { handleSessionStart, handleSessionStop } from "./routes/session"
 import { handlePostTool } from "./routes/post-tool"
 import { handlePreTool } from "./routes/pre-tool"
 import { handleUserPrompt } from "./routes/user-prompt"
-import { handleDashboardKpis, handleDashboardTools, handleDashboardPrompts, handleDashboardSessions, handleTranscript } from "./routes/dashboard"
+import { handleDashboardKpis, handleDashboardTools, handleDashboardPrompts, handleDashboardSessions, handleDashboardHaikuCost, handleTranscript } from "./routes/dashboard"
 import { config } from "./config"
 
 // Embedded at build time — Bun resolves this relative to src/
@@ -51,6 +51,8 @@ export function startServer() {
             return handleDashboardPrompts(url)
           case "/dashboard/sessions":
             return handleDashboardSessions(url)
+          case "/dashboard/haiku-cost":
+            return handleDashboardHaikuCost(url)
         }
       }
 
