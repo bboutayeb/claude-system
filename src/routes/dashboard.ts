@@ -81,6 +81,38 @@ export async function handleDashboardSessions(url: URL): Promise<Response> {
   })
 }
 
+export async function handleDashboardHaikuCost(url: URL): Promise<Response> {
+  const days = Math.min(90, Math.max(1, parseInt(url.searchParams.get("days") ?? "7")))
+  const { rows } = await db.query(
+    `SELECT
+       DATE(created_at)                          AS day,
+       SUM(input_tokens)                         AS input_tokens,
+       SUM(output_tokens)                        AS output_tokens,
+       ROUND(SUM(cost_usd)::numeric, 6)          AS cost_usd,
+       SUM(cost_usd) FILTER (WHERE source = 'ambiguity')  AS cost_ambiguity,
+       SUM(cost_usd) FILTER (WHERE source = 'scoring')    AS cost_scoring,
+       COUNT(*)                                  AS call_count
+     FROM haiku_usage
+     WHERE created_at >= CURRENT_DATE - $1::int
+     GROUP BY DATE(created_at)
+     ORDER BY day
+     LIMIT 90`,
+    [days]
+  )
+  const { rows: totals } = await db.query(
+    `SELECT
+       ROUND(SUM(cost_usd)::numeric, 6)  AS total_cost_usd,
+       COUNT(*)                          AS total_calls
+     FROM haiku_usage
+     WHERE created_at >= CURRENT_DATE - $1::int`,
+    [days]
+  )
+  return new Response(
+    JSON.stringify({ rows, total_cost_usd: totals[0]?.total_cost_usd ?? 0, total_calls: totals[0]?.total_calls ?? 0 }),
+    { headers: { "Content-Type": "application/json" } }
+  )
+}
+
 export async function handleTranscript(url: URL): Promise<Response> {
   const path = url.searchParams.get("path")
   if (!path) {

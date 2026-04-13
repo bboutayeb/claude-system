@@ -190,7 +190,15 @@ Plutôt que de scorer chaque prompt isolément, le scoring temps réel évalue u
 
 ### Moyen terme
 
-- [ ] **Étape 4** — Métriques de coût Haiku
+- [x] **Étape 4** — Métriques de coût Haiku
+  - ✅ Migration `010_haiku_usage.sql` : table `haiku_usage (source, input_tokens, output_tokens, cost_usd, created_at)`
+  - ✅ `src/lib/haiku-usage.ts` : constantes pricing ($0.80/MTok input, $4.00/MTok output) + `calcHaikuCost()`
+  - ✅ `user-prompt.ts` : insère dans `haiku_usage` après chaque appel Haiku ambiguity + alerte configurable (`haiku_cost_alert_usd`)
+  - ✅ `quality-scorer.ts` : insère dans `haiku_usage` après chaque appel scoring
+  - ✅ `config.ts` : nouveau champ `haiku_cost_alert_usd: number | null` (défaut null = désactivé)
+  - ✅ Endpoint `GET /dashboard/haiku-cost?days=N` : coût total + breakdown par source + série journalière
+  - ✅ Dashboard : KPI card "Coût Haiku (période)" + graphique barres empilées ambiguity/scoring
+  - **Prochaine étape :** Étape 5
 - [ ] **Étape 5** — Feedback faux positifs (populate `ALLOWLISTED_RESPONSES`)
 - [ ] **Étape 6** — Rebuild binaire v0.2.0
 

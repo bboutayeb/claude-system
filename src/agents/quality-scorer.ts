@@ -1,6 +1,7 @@
 import { Pool } from "pg"
 import Anthropic from "@anthropic-ai/sdk"
 import { config } from "../config"
+import { calcHaikuCost } from "../lib/haiku-usage"
 
 interface PromptRow {
   id: number
@@ -55,7 +56,13 @@ function findAssistantResponse(lines: string[], promptText: string): string | nu
 
 // ─── Scoring ──────────────────────────────────────────────────────────────────
 
-async function scoreExchange(client: Anthropic, prompt: string, response: string): Promise<number> {
+interface ScoreResult {
+  score: number
+  inputTokens: number
+  outputTokens: number
+}
+
+async function scoreExchange(client: Anthropic, prompt: string, response: string): Promise<ScoreResult> {
   const result = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 10,
@@ -71,7 +78,11 @@ Respond with ONLY a single integer from 1 to 10. Nothing else.`,
   })
   const text = result.content[0]?.type === "text" ? result.content[0].text.trim() : ""
   const score = parseInt(text, 10)
-  return score >= 1 && score <= 10 ? score : 5
+  return {
+    score: score >= 1 && score <= 10 ? score : 5,
+    inputTokens: result.usage.input_tokens,
+    outputTokens: result.usage.output_tokens,
+  }
 }
 
 // ─── Core scoring logic ───────────────────────────────────────────────────────
@@ -103,8 +114,15 @@ async function scorePrompts(
         continue
       }
 
-      const score = await scoreExchange(client, row.prompt_text, response)
-      await pool.query("UPDATE prompts SET quality_score = $1 WHERE id = $2", [score, row.id])
+      const { score, inputTokens, outputTokens } = await scoreExchange(client, row.prompt_text, response)
+      const cost = calcHaikuCost(inputTokens, outputTokens)
+      await Promise.all([
+        pool.query("UPDATE prompts SET quality_score = $1 WHERE id = $2", [score, row.id]),
+        pool.query(
+          "INSERT INTO haiku_usage (source, input_tokens, output_tokens, cost_usd) VALUES ($1, $2, $3, $4)",
+          ["scoring", inputTokens, outputTokens, cost]
+        ),
+      ])
       console.log(`  [OK]   #${row.id} score=${score}`)
       scored++
 

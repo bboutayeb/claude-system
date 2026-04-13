@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { db } from "../db"
 import { config } from "../config"
+import { calcHaikuCost } from "../lib/haiku-usage"
 
 const AMBIGUITY_TRIGGERS = [
   // English deictic references
@@ -61,6 +62,15 @@ async function getSuggestion(text: string): Promise<SuggestionResult> {
       },
       { signal: abort.signal }
     )
+
+    // Track Haiku usage — fire-and-forget
+    const { input_tokens, output_tokens } = result.usage
+    const cost = calcHaikuCost(input_tokens, output_tokens)
+    db.query(
+      "INSERT INTO haiku_usage (source, input_tokens, output_tokens, cost_usd) VALUES ($1, $2, $3, $4)",
+      ["ambiguity", input_tokens, output_tokens, cost]
+    ).then(() => checkHaikuAlert()).catch(() => {})
+
     const text_ = result.content[0]?.type === "text" ? result.content[0].text.trim() : ""
     return text_.length > 0 ? { status: "question", text: text_ } : { status: "clear" }
   } catch {
@@ -68,6 +78,20 @@ async function getSuggestion(text: string): Promise<SuggestionResult> {
   } finally {
     clearTimeout(timer)
   }
+}
+
+function checkHaikuAlert(): void {
+  const limit = config.haiku_cost_alert_usd
+  if (limit == null) return
+  db.query(
+    "SELECT COALESCE(SUM(cost_usd), 0) AS total FROM haiku_usage WHERE created_at >= CURRENT_DATE",
+    []
+  ).then(({ rows }) => {
+    const total = parseFloat(rows[0]?.total ?? "0")
+    if (total >= limit) {
+      console.warn(`[claude-monitor] WARNING: Haiku daily cost $${total.toFixed(4)} >= alert threshold $${limit}`)
+    }
+  }).catch(() => {})
 }
 
 export async function handleUserPrompt(body: unknown): Promise<Response> {
