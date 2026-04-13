@@ -172,7 +172,14 @@ Plutôt que de scorer chaque prompt isolément, le scoring temps réel évalue u
   - ✅ PR #1 mergée dans `integ` (commit: `79aafa5`)
   - **Prochaine étape :** Étape 2
 
-- [ ] **Étape 2** — Quality scorer automatique au Stop
+- [x] **Étape 2** — Quality scorer automatique au Stop
+  - ✅ `scoreSession(sessionId, maxPrompts?)` exporté depuis `quality-scorer.ts`
+  - ✅ `runAll(maxPrompts?)` exporté pour le backfill CLI
+  - ✅ Spawn fire-and-forget dans `onSessionStop()` via `Bun.spawn` (pattern identique au verifier)
+  - ✅ Guard double : dans `handler.ts` avant le spawn + dans les fonctions exportées
+  - ✅ CLI : `score-session <id>` + `score --max-prompts N` (défaut 20)
+  - ✅ Pool fermé explicitement (`pool.end()` dans `finally`) — pas de hang à l'exit
+  - **Prochaine étape :** Étape 3
 - [ ] **Étape 3** — Dashboard UX : scores par session + source ambiguïté
 
 ### Moyen terme
@@ -193,6 +200,6 @@ Plutôt que de scorer chaque prompt isolément, le scoring temps réel évalue u
 | Branche | Statut | Notes |
 |---------|--------|-------|
 | `main` | Stable (prod-ready) | Merges uniquement depuis `integ` (releases éprouvées) |
-| `integ` | Intégration | Étape 1 mergée ✅ |
+| `integ` | Intégration | Étapes 1 & 2 mergées ✅ |
 | `feat/allowlist-short-prompts` | ✅ Merged | → `integ` le 2026-04-13 23:19 |
-| `feat/quality-scorer-auto-stop` | À créer | Prochaine feature branch |
+| `feat/quality-scorer-auto-stop` | ✅ Merged | → `integ` le 2026-04-14 (commit 1973fb3) |
