@@ -16,13 +16,11 @@ const AMBIGUITY_TRIGGERS = [
 const FALLBACK_REASON =
   "Votre prompt semble ambigu. Pourriez-vous préciser ce que vous souhaitez faire ?"
 
-// Slash commands and short valid responses that must never be blocked
+// Slash commands (/compact, /help, /clear, etc.) must never be blocked
 const SLASH_COMMAND_RE = /^\/\w+/
-const ALLOWLISTED_RESPONSES = new Set([
-  "yes", "no", "ok", "oui", "non", "si",
-  "continue", "go ahead", "stop", "done",
-  "proceed", "cancel", "skip", "retry",
-])
+
+// User-defined allowlist — populated via dashboard feedback (future feature)
+const ALLOWLISTED_RESPONSES = new Set<string>([])
 
 function isAllowlisted(text: string): boolean {
   const t = text.trim()
