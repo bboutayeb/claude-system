@@ -112,10 +112,12 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
     ? `[IA] ${suggestion.text}`
     : `[heuristique] ${FALLBACK_REASON}`
 
+  const source = suggestion.status === "question" ? "ia" : "heuristique"
+
   // Log to ambiguities — fire-and-forget
   db.query(
-    "INSERT INTO ambiguities (session_id, tool_name, prompt_text, suggestion) VALUES ($1, $2, $3, $4)",
-    [session_id ?? null, null, prompt.slice(0, 500), reason]
+    "INSERT INTO ambiguities (session_id, tool_name, prompt_text, suggestion, source) VALUES ($1, $2, $3, $4, $5)",
+    [session_id ?? null, null, prompt.slice(0, 500), reason, source]
   ).catch(() => {})
 
   return new Response(

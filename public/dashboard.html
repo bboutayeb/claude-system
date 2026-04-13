@@ -84,6 +84,36 @@
     }
 
     .error { color: #f87171; font-size: 12px; margin-top: 0.5rem; }
+
+    .sessions-section {
+      margin-top: 1.5rem;
+    }
+
+    .sessions-title {
+      font-size: 12px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.75rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid #0f172a;
+    }
+
+    th { color: #64748b; font-weight: 500; }
+    td { color: #cbd5e1; }
+    tr:hover td { background: #263348; }
+    a.transcript-link { color: #3b82f6; text-decoration: none; }
+    a.transcript-link:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -138,6 +168,26 @@
     </div>
   </div>
 
+  <div class="sessions-section">
+    <div class="sessions-title">Sessions récentes</div>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Modèle</th>
+            <th>Prompts</th>
+            <th>Score moy.</th>
+            <th>Ambigus</th>
+            <th>Source</th>
+            <th>Transcript</th>
+          </tr>
+        </thead>
+        <tbody id="sessions-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
   <script>
     const charts = {}
 
@@ -163,14 +213,16 @@
     }
 
     async function load(days) {
-      const [kpisRes, toolsRes, promptsRes] = await Promise.all([
+      const [kpisRes, toolsRes, promptsRes, sessionsRes] = await Promise.all([
         fetch(`/dashboard/kpis?days=${days}`),
         fetch(`/dashboard/tools?days=${days}`),
         fetch(`/dashboard/prompts?days=${days}`),
+        fetch(`/dashboard/sessions?days=${days}`),
       ])
       const { rows: kpis } = await kpisRes.json()
       const { tools } = await toolsRes.json()
       const { rows: promptStats } = await promptsRes.json()
+      const { sessions } = await sessionsRes.json()
 
       // Compteurs today
       const today = kpis.length ? kpis[kpis.length - 1] : null
@@ -290,6 +342,22 @@
           },
         },
       })
+
+      // Sessions table
+      const tbody = document.getElementById('sessions-tbody')
+      tbody.innerHTML = sessions.map(s => {
+        const date = new Date(s.started_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+        const model = s.model ? s.model.split('-').slice(-2).join('-') : '—'
+        const score = s.avg_quality != null ? parseFloat(s.avg_quality).toFixed(1) + ' /10' : '—'
+        const ambigus = parseInt(s.ambiguity_count) || 0
+        const iaCount = parseInt(s.ambiguity_ia) || 0
+        const heurCount = parseInt(s.ambiguity_heuristique) || 0
+        const source = ambigus > 0 ? `${iaCount} IA / ${heurCount} h.` : '—'
+        const link = s.transcript_path
+          ? `<a class="transcript-link" href="/transcript?path=${encodeURIComponent(s.transcript_path)}" target="_blank">📄</a>`
+          : '—'
+        return `<tr><td>${date}</td><td>${model}</td><td>${parseInt(s.prompt_count) || 0}</td><td>${score}</td><td>${ambigus}</td><td>${source}</td><td>${link}</td></tr>`
+      }).join('')
     }
 
     document.getElementById('days').addEventListener('change', e => load(e.target.value))

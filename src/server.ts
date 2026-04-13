@@ -2,7 +2,7 @@ import { handleSessionStart, handleSessionStop } from "./routes/session"
 import { handlePostTool } from "./routes/post-tool"
 import { handlePreTool } from "./routes/pre-tool"
 import { handleUserPrompt } from "./routes/user-prompt"
-import { handleDashboardKpis, handleDashboardTools, handleDashboardPrompts } from "./routes/dashboard"
+import { handleDashboardKpis, handleDashboardTools, handleDashboardPrompts, handleDashboardSessions, handleTranscript } from "./routes/dashboard"
 import { config } from "./config"
 
 // Embedded at build time — Bun resolves this relative to src/
@@ -49,7 +49,13 @@ export function startServer() {
             return handleDashboardTools(url)
           case "/dashboard/prompts":
             return handleDashboardPrompts(url)
+          case "/dashboard/sessions":
+            return handleDashboardSessions(url)
         }
+      }
+
+      if (req.method === "GET" && url.pathname === "/transcript") {
+        return handleTranscript(url)
       }
 
       if (req.method !== "POST") {

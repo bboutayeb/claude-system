@@ -53,3 +53,55 @@ export async function handleDashboardPrompts(url: URL): Promise<Response> {
     headers: { "Content-Type": "application/json" },
   })
 }
+
+export async function handleDashboardSessions(url: URL): Promise<Response> {
+  const days = Math.min(90, Math.max(1, parseInt(url.searchParams.get("days") ?? "7")))
+  const { rows } = await db.query(
+    `SELECT s.id,
+            s.started_at,
+            s.ended_at,
+            s.model,
+            s.transcript_path,
+            COUNT(DISTINCT p.id)                                             AS prompt_count,
+            ROUND(AVG(p.quality_score), 2)                                   AS avg_quality,
+            COUNT(DISTINCT a.id)                                             AS ambiguity_count,
+            COUNT(DISTINCT a.id) FILTER (WHERE a.source = 'ia')             AS ambiguity_ia,
+            COUNT(DISTINCT a.id) FILTER (WHERE a.source = 'heuristique')    AS ambiguity_heuristique
+     FROM sessions s
+     LEFT JOIN prompts p ON p.session_id = s.id
+     LEFT JOIN ambiguities a ON a.session_id = s.id
+     WHERE s.started_at >= CURRENT_DATE - $1::int
+     GROUP BY s.id, s.started_at, s.ended_at, s.model, s.transcript_path
+     ORDER BY s.started_at DESC
+     LIMIT 50`,
+    [days]
+  )
+  return new Response(JSON.stringify({ sessions: rows }), {
+    headers: { "Content-Type": "application/json" },
+  })
+}
+
+export async function handleTranscript(url: URL): Promise<Response> {
+  const path = url.searchParams.get("path")
+  if (!path) {
+    return new Response("Missing path", { status: 400 })
+  }
+
+  // Security: only serve files whose path is registered in sessions.transcript_path
+  const { rows } = await db.query(
+    "SELECT 1 FROM sessions WHERE transcript_path = $1 LIMIT 1",
+    [path]
+  )
+  if (rows.length === 0) {
+    return new Response("Not found", { status: 404 })
+  }
+
+  try {
+    const content = await Bun.file(path).text()
+    return new Response(content, {
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    })
+  } catch {
+    return new Response("File not found", { status: 404 })
+  }
+}

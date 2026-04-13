@@ -180,7 +180,13 @@ Plutôt que de scorer chaque prompt isolément, le scoring temps réel évalue u
   - ✅ CLI : `score-session <id>` + `score --max-prompts N` (défaut 20)
   - ✅ Pool fermé explicitement (`pool.end()` dans `finally`) — pas de hang à l'exit
   - **Prochaine étape :** Étape 3
-- [ ] **Étape 3** — Dashboard UX : scores par session + source ambiguïté
+- [x] **Étape 3** — Dashboard UX : scores par session + source ambiguïté
+  - ✅ Migration `009_ambiguity_source.sql` : colonne `source TEXT` + backfill 13 entrées
+  - ✅ `user-prompt.ts` : peuple `source` (`ia`/`heuristique`) dans INSERT ambiguities
+  - ✅ Endpoint `GET /dashboard/sessions?days=N` : sessions + prompts agrégés + breakdown source ambiguïtés
+  - ✅ Endpoint `GET /transcript?path=...` : sert le fichier JSONL validé via DB (sécurité path traversal)
+  - ✅ Dashboard : table sessions récentes (date, modèle, prompts, score moy., ambigus, source, transcript)
+  - **Prochaine étape :** Étape 4
 
 ### Moyen terme
 
