@@ -16,6 +16,19 @@ const AMBIGUITY_TRIGGERS = [
 const FALLBACK_REASON =
   "Votre prompt semble ambigu. Pourriez-vous préciser ce que vous souhaitez faire ?"
 
+// Slash commands and short valid responses that must never be blocked
+const SLASH_COMMAND_RE = /^\/\w+/
+const ALLOWLISTED_RESPONSES = new Set([
+  "yes", "no", "ok", "oui", "non", "si",
+  "continue", "go ahead", "stop", "done",
+  "proceed", "cancel", "skip", "retry",
+])
+
+function isAllowlisted(text: string): boolean {
+  const t = text.trim()
+  return SLASH_COMMAND_RE.test(t) || ALLOWLISTED_RESPONSES.has(t.toLowerCase())
+}
+
 function isAmbiguous(text: string): boolean {
   const len = text.trim().length
   // Very short: always ambiguous
@@ -66,6 +79,15 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
   }
 
   if (!prompt) {
+    return new Response("{}", { headers: { "Content-Type": "application/json" } })
+  }
+
+  // Slash commands and short valid responses bypass ambiguity detection entirely
+  if (isAllowlisted(prompt)) {
+    db.query(
+      "INSERT INTO prompts (session_id, prompt_text, is_ambiguous) VALUES ($1, $2, $3)",
+      [session_id ?? null, prompt.slice(0, 2000), false]
+    ).catch(() => {})
     return new Response("{}", { headers: { "Content-Type": "application/json" } })
   }
 
