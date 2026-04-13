@@ -1,9 +1,8 @@
 import { Pool } from "pg"
+import { config } from "./config"
 
 const pool = new Pool({
-  connectionString:
-    process.env.DATABASE_URL ??
-    "postgresql://claude:claude@localhost:5432/claude_system",
+  connectionString: config.db_url,
   max: 5,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,

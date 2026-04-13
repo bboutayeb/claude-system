@@ -1,13 +1,14 @@
 import { Pool } from "pg"
 import Anthropic from "@anthropic-ai/sdk"
+import { config } from "../config"
 
-const pool = new Pool({
-  connectionString:
-    process.env.DATABASE_URL ??
-    "postgresql://claude:claude@localhost:5432/claude_system",
-})
+if (!config.anthropic_api_key) {
+  console.log("[quality-scorer] ANTHROPIC_API_KEY not set — skipping")
+  process.exit(0)
+}
 
-const client = new Anthropic()
+const pool = new Pool({ connectionString: config.db_url })
+const client = new Anthropic({ apiKey: config.anthropic_api_key })
 
 interface PromptRow {
   id: number
@@ -26,13 +27,11 @@ function findAssistantResponse(lines: string[], promptText: string): string | nu
 
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i]
-    // User message matching the prompt
     if (e?.type === "human" || e?.role === "user") {
       const content = typeof e.message?.content === "string"
         ? e.message.content
         : e.content
       if (typeof content === "string" && content.includes(promptText.slice(0, 100))) {
-        // Find next assistant message
         for (let j = i + 1; j < entries.length; j++) {
           const next = entries[j]
           if (next?.type === "assistant" || next?.role === "assistant") {
@@ -52,7 +51,7 @@ function findAssistantResponse(lines: string[], promptText: string): string | nu
   return null
 }
 
-// ─── Scoring ─────────────────────────────────────────────────────────────────
+// ─── Scoring ──────────────────────────────────────────────────────────────────
 
 async function scoreExchange(prompt: string, response: string): Promise<number> {
   const result = await client.messages.create({
@@ -73,7 +72,7 @@ Respond with ONLY a single integer from 1 to 10. Nothing else.`,
   return score >= 1 && score <= 10 ? score : 5
 }
 
-// ─── Runner ──────────────────────────────────────────────────────────────────
+// ─── Runner ───────────────────────────────────────────────────────────────────
 
 async function runAll() {
   const { rows: prompts } = await pool.query<PromptRow>(
@@ -120,7 +119,6 @@ async function runAll() {
       console.log(`  [OK]   #${row.id} score=${score}`)
       scored++
 
-      // Rate limiting
       await new Promise(r => setTimeout(r, 200))
     } catch (err: unknown) {
       const error = err as Error

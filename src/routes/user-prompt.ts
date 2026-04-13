@@ -1,7 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { db } from "../db"
-
-const client = new Anthropic()
+import { config } from "../config"
 
 const AMBIGUITY_TRIGGERS = [
   // English deictic references
@@ -22,6 +21,10 @@ function isAmbiguous(text: string): boolean {
 }
 
 async function getSuggestion(text: string): Promise<string | null> {
+  if (!config.anthropic_api_key) return null
+
+  const client = new Anthropic({ apiKey: config.anthropic_api_key })
+
   const haiku = client.messages
     .create({
       model: "claude-haiku-4-5-20251001",

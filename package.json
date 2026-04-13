@@ -1,13 +1,18 @@
 {
-  "name": "claude-system",
+  "name": "claude-monitor",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "hooks-server": "bun run hooks-server/server.ts",
-    "verify": "bun run agents/verifier.ts",
-    "quality-scorer": "bun run agents/quality-scorer.ts",
-    "db:up": "docker compose up -d",
-    "db:down": "docker compose down"
+    "dev": "bun run src/cli.ts server",
+    "server": "bun run src/cli.ts server",
+    "verify": "bun run src/cli.ts verify",
+    "score": "bun run src/cli.ts score",
+    "install:hooks": "bun run src/cli.ts install",
+    "uninstall:hooks": "bun run src/cli.ts uninstall",
+    "status": "bun run src/cli.ts status",
+    "build": "bash scripts/build.sh",
+    "db:up": "docker compose -f infra/docker-compose.yml up -d",
+    "db:down": "docker compose -f infra/docker-compose.yml down"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",

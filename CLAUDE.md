@@ -14,44 +14,43 @@
 ## Project Context
 
 This repository implements a measurable, optimizable, and reliable agentic system
-built around Claude Code. It is structured as follows:
+built around Claude Code. Distributed as a single compiled binary (`claude-monitor`).
 
 ### Architecture
 
-- **Hooks server** (`hooks-server/`) — persistent Bun HTTP server on port 18766
-  - Receives PreToolUse / PostToolUse / SessionStart events via HTTP
-  - Persists token usage and tool call metrics to PostgreSQL
-  - Detects ambiguous prompts (Phase 3) and suggests clarifications
-- **PostgreSQL** (`docker-compose.yml`) — observability data store
-  - `sessions` table: input/output/cache tokens per session
-  - `tool_calls` table: per-tool latency and token usage
-  - `kpi_snapshots` table: daily aggregates for trend analysis
-  - `tasks` table: acceptance criteria + automated verification (Phase 4)
-- **Hooks** (`hooks/`) — shell scripts wiring Claude Code lifecycle to the HTTP server
-- **Agents** (`agents/`) — automated verifier for task acceptance criteria (Phase 4)
+- **CLI binary** (`src/cli.ts`) — compiled with `bun build --compile`, entry point for all sub-commands
+- **HTTP server** (`src/server.ts`) — persistent server on port 18766, receives hook events and serves the dashboard
+  - Auto-started by the `SessionStart` hook if not already running
+  - Persists token usage, tool calls, prompts to PostgreSQL
+  - Detects ambiguous prompts and suggests clarifications
+- **Hook handler** (`src/hooks/handler.ts`) — replaces the 4 legacy shell scripts
+- **Agents** (`src/agents/`) — `verifier.ts` (acceptance criteria), `quality-scorer.ts` (prompt scoring via Haiku)
+- **PostgreSQL** (`infra/docker-compose.yml`) — observability data store
+  - `sessions`, `tool_calls`, `kpi_snapshots`, `prompts` tables
+- **Install/uninstall** (`src/install/`) — Docker PG setup + atomic settings-merge into `~/.claude/settings.json`
 
 ### Key design decisions
 
-1. Single persistent HTTP server (not per-invocation shell scripts) to avoid ~230ms
-   cold-start cost per tool call.
+1. Single persistent HTTP server (not per-invocation shell scripts) to avoid ~230ms cold-start per tool call.
 2. Fire-and-forget HTTP from hooks — hooks never block Claude Code's execution.
 3. PostgreSQL via Docker Compose — no host-level DB dependency.
-4. `mise` for runtime isolation — Node 22 and Bun managed locally in the repo.
-5. Claude Haiku (not Ollama) for lightweight LLM tasks (ambiguity detection).
+4. Compiled binary — no runtime dependency (Bun, Node, mise) on target machines.
+5. Claude Haiku for lightweight LLM tasks (ambiguity detection, quality scoring).
 
 ### Stack
 
-- Runtime management: `mise` (`.mise.toml`)
 - HTTP server: Bun + TypeScript
 - Database: PostgreSQL 17 (Docker Compose)
+- Build: `bun build --compile` → linux-x64, darwin-arm64, darwin-x64
 - Claude API: Anthropic SDK (prompt caching enabled)
 
 ### Environment
 
 - Repo: `/home/zaibaker/Code/Perso/IA/prompt`
-- Hooks server: `http://127.0.0.1:18766`
+- Server: `http://127.0.0.1:18766`
 - PostgreSQL: `localhost:5432`, db=`claude_system`, user=`claude`
-- Hooks server start: `cd /home/zaibaker/Code/Perso/IA/prompt && mise exec -- bun run hooks-server/server.ts`
+- Dev server: `bun run src/cli.ts server`
+- Config: `~/.claude-monitor/config.json`
 
 ## SQL Conventions
 

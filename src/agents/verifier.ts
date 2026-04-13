@@ -1,14 +1,11 @@
 import { Pool } from "pg"
 import { readFileSync, existsSync } from "fs"
 import { execSync } from "child_process"
+import { config } from "../config"
 
-const pool = new Pool({
-  connectionString:
-    process.env.DATABASE_URL ??
-    "postgresql://claude:claude@localhost:5432/claude_system",
-})
+const pool = new Pool({ connectionString: config.db_url })
 
-// ─── Acceptance criteria types ───────────────────────────────────────────────
+// ─── Acceptance criteria types ────────────────────────────────────────────────
 
 type SqlCountCriteria = { type: "sql_count"; query: string; min: number }
 type PatternCriteria  = { type: "pattern";   file: string; regex: string }
@@ -30,7 +27,7 @@ interface Task {
   acceptance_criteria: Criteria | null
 }
 
-// ─── Verifiers ───────────────────────────────────────────────────────────────
+// ─── Verifiers ────────────────────────────────────────────────────────────────
 
 async function verifySqlCount(c: SqlCountCriteria): Promise<boolean> {
   const result = await pool.query(c.query)
@@ -75,7 +72,7 @@ async function verifyCriteria(criteria: Criteria): Promise<boolean> {
   }
 }
 
-// ─── Runner ──────────────────────────────────────────────────────────────────
+// ─── Runner ───────────────────────────────────────────────────────────────────
 
 async function runAll() {
   const { rows: tasks } = await pool.query<Task>(
