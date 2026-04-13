@@ -20,12 +20,22 @@ const FALLBACK_REASON =
 // Slash commands (/compact, /help, /clear, etc.) must never be blocked
 const SLASH_COMMAND_RE = /^\/\w+/
 
-// User-defined allowlist — populated via dashboard feedback (future feature)
+// User-defined allowlist — populated from DB (ambiguities marked as false positives)
 const ALLOWLISTED_RESPONSES = new Set<string>([])
+
+export async function loadAllowlist(): Promise<void> {
+  const { rows } = await db.query(
+    "SELECT prompt_text FROM ambiguities WHERE false_positive = true"
+  )
+  ALLOWLISTED_RESPONSES.clear()
+  for (const row of rows) {
+    ALLOWLISTED_RESPONSES.add((row.prompt_text as string).slice(0, 500).toLowerCase())
+  }
+}
 
 function isAllowlisted(text: string): boolean {
   const t = text.trim()
-  return SLASH_COMMAND_RE.test(t) || ALLOWLISTED_RESPONSES.has(t.toLowerCase())
+  return SLASH_COMMAND_RE.test(t) || ALLOWLISTED_RESPONSES.has(t.slice(0, 500).toLowerCase())
 }
 
 function isAmbiguous(text: string): boolean {

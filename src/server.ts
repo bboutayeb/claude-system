@@ -1,8 +1,9 @@
 import { handleSessionStart, handleSessionStop } from "./routes/session"
 import { handlePostTool } from "./routes/post-tool"
 import { handlePreTool } from "./routes/pre-tool"
-import { handleUserPrompt } from "./routes/user-prompt"
+import { handleUserPrompt, loadAllowlist } from "./routes/user-prompt"
 import { handleDashboardKpis, handleDashboardTools, handleDashboardPrompts, handleDashboardSessions, handleDashboardHaikuCost, handleTranscript } from "./routes/dashboard"
+import { handleAmbiguityList, handleAmbiguityFeedback } from "./routes/ambiguity"
 import { config } from "./config"
 
 // Embedded at build time — Bun resolves this relative to src/
@@ -53,6 +54,8 @@ export function startServer() {
             return handleDashboardSessions(url)
           case "/dashboard/haiku-cost":
             return handleDashboardHaikuCost(url)
+          case "/dashboard/ambiguities":
+            return handleAmbiguityList(url)
         }
       }
 
@@ -77,6 +80,8 @@ export function startServer() {
           return handlePreTool(body)
         case "/post-tool":
           return handlePostTool(body)
+        case "/ambiguity/feedback":
+          return handleAmbiguityFeedback(body)
         default:
           return new Response("not found", { status: 404 })
       }
@@ -90,5 +95,9 @@ export function startServer() {
   console.log(`[claude-monitor] server listening on http://127.0.0.1:${config.port}`)
   console.log(`[claude-monitor] ANTHROPIC_API_KEY: ${hasApiKey ? "present" : "not set — Haiku features disabled"}`)
   console.log(`[claude-monitor] dashboard: http://127.0.0.1:${config.port}/dashboard`)
+
+  // Load false-positive allowlist from DB at startup
+  loadAllowlist().catch(() => {})
+
   return server
 }

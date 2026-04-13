@@ -114,6 +114,19 @@
     tr:hover td { background: #263348; }
     a.transcript-link { color: #3b82f6; text-decoration: none; }
     a.transcript-link:hover { text-decoration: underline; }
+
+    .btn-fp {
+      background: #334155;
+      color: #e2e8f0;
+      border: 1px solid #475569;
+      border-radius: 4px;
+      padding: 0.2rem 0.5rem;
+      font-size: 11px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-fp:hover { background: #475569; }
+    .btn-fp.active { background: #f59e0b; color: #0f172a; border-color: #f59e0b; }
   </style>
 </head>
 <body>
@@ -177,6 +190,27 @@
   </div>
 
   <div class="sessions-section">
+    <div class="sessions-title">
+      Ambiguïtés récentes
+      <span id="fp-rate" style="float:right; font-size:11px; color:#f59e0b"></span>
+    </div>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Source</th>
+            <th>Prompt</th>
+            <th>Suggestion</th>
+            <th>Feedback</th>
+          </tr>
+        </thead>
+        <tbody id="ambiguities-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sessions-section">
     <div class="sessions-title">Sessions récentes</div>
     <div class="card">
       <table>
@@ -220,19 +254,30 @@
       }
     }
 
+    async function toggleFp(id, fp) {
+      await fetch('/ambiguity/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, false_positive: fp }),
+      })
+      load(document.getElementById('days').value)
+    }
+
     async function load(days) {
-      const [kpisRes, toolsRes, promptsRes, sessionsRes, haikuRes] = await Promise.all([
+      const [kpisRes, toolsRes, promptsRes, sessionsRes, haikuRes, ambigRes] = await Promise.all([
         fetch(`/dashboard/kpis?days=${days}`),
         fetch(`/dashboard/tools?days=${days}`),
         fetch(`/dashboard/prompts?days=${days}`),
         fetch(`/dashboard/sessions?days=${days}`),
         fetch(`/dashboard/haiku-cost?days=${days}`),
+        fetch(`/dashboard/ambiguities?days=${days}`),
       ])
       const { rows: kpis } = await kpisRes.json()
       const { tools } = await toolsRes.json()
       const { rows: promptStats } = await promptsRes.json()
       const { sessions } = await sessionsRes.json()
       const { rows: haikuRows, total_cost_usd: haikuTotal } = await haikuRes.json()
+      const { ambiguities } = await ambigRes.json()
 
       // Compteurs today
       const today = kpis.length ? kpis[kpis.length - 1] : null
@@ -381,6 +426,29 @@
           },
         },
       })
+
+      // Ambiguities table
+      const fpCount = ambiguities.filter(a => a.false_positive === true).length
+      const fpRate = ambiguities.length > 0 ? (fpCount / ambiguities.length * 100).toFixed(1) : '0'
+      document.getElementById('fp-rate').textContent =
+        `Faux positifs : ${fpCount}/${ambiguities.length} (${fpRate}%)`
+
+      const ambTbody = document.getElementById('ambiguities-tbody')
+      ambTbody.innerHTML = ambiguities.length === 0
+        ? '<tr><td colspan="5" style="color:#475569;text-align:center">Aucune ambiguïté sur la période</td></tr>'
+        : ambiguities.map(a => {
+            const date = new Date(a.detected_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+            const prompt = a.prompt_text.length > 80 ? a.prompt_text.slice(0, 80) + '…' : a.prompt_text
+            const suggestion = (a.suggestion || '').length > 60 ? a.suggestion.slice(0, 60) + '…' : (a.suggestion || '—')
+            const isFp = a.false_positive === true
+            return `<tr>
+              <td>${date}</td>
+              <td>${a.source || '—'}</td>
+              <td title="${a.prompt_text.replace(/"/g, '&quot;')}">${prompt}</td>
+              <td>${suggestion}</td>
+              <td><button class="btn-fp${isFp ? ' active' : ''}" onclick="toggleFp(${a.id}, ${!isFp})">${isFp ? 'Faux positif ✓' : 'Marquer FP'}</button></td>
+            </tr>`
+          }).join('')
 
       // Sessions table
       const tbody = document.getElementById('sessions-tbody')
