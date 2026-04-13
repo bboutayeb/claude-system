@@ -109,6 +109,10 @@
       <div class="card-label">Coût aujourd'hui (USD)</div>
       <div class="card-value" id="cnt-cost">—</div>
     </div>
+    <div class="card">
+      <div class="card-label">Qualité moy. prompts</div>
+      <div class="card-value" id="cnt-quality">—</div>
+    </div>
   </div>
 
   <div class="charts">
@@ -123,6 +127,10 @@
     <div class="chart-card">
       <div class="chart-title">Ambiguity rate / jour</div>
       <canvas id="chart-ambiguity"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Qualité prompts / jour</div>
+      <canvas id="chart-quality"></canvas>
     </div>
     <div class="chart-card">
       <div class="chart-title">Top outils</div>
@@ -155,18 +163,22 @@
     }
 
     async function load(days) {
-      const [kpisRes, toolsRes] = await Promise.all([
+      const [kpisRes, toolsRes, promptsRes] = await Promise.all([
         fetch(`/dashboard/kpis?days=${days}`),
         fetch(`/dashboard/tools?days=${days}`),
+        fetch(`/dashboard/prompts?days=${days}`),
       ])
       const { rows: kpis } = await kpisRes.json()
       const { tools } = await toolsRes.json()
+      const { rows: promptStats } = await promptsRes.json()
 
       // Compteurs today
       const today = kpis.length ? kpis[kpis.length - 1] : null
       document.getElementById('cnt-sessions').textContent = today ? fmt(today.total_sessions) : '—'
       document.getElementById('cnt-tokens').textContent = today ? fmt(today.total_tokens) : '—'
       document.getElementById('cnt-cost').textContent = today ? fmtUsd(today.estimated_cost_usd) : '—'
+      const todayPrompts = promptStats.length ? promptStats[promptStats.length - 1] : null
+      document.getElementById('cnt-quality').textContent = todayPrompts?.avg_quality != null ? parseFloat(todayPrompts.avg_quality).toFixed(1) + ' / 10' : '—'
 
       const labels = kpis.map(r => r.snapshot_date?.slice(0, 10))
 
@@ -232,6 +244,30 @@
           scales: {
             ...chartDefaults.scales,
             y: { ...chartDefaults.scales.y, min: 0, max: 100, title: { display: true, text: '%', color: '#64748b' } },
+          },
+        },
+      })
+
+      const qualityLabels = promptStats.map(r => r.day?.slice(0, 10))
+      makeOrUpdate('chart-quality', {
+        type: 'line',
+        data: {
+          labels: qualityLabels,
+          datasets: [{
+            data: promptStats.map(r => r.avg_quality != null ? parseFloat(r.avg_quality) : null),
+            borderColor: '#a855f7',
+            backgroundColor: 'rgba(168,85,247,0.08)',
+            tension: 0.3,
+            fill: true,
+            pointRadius: 3,
+            spanGaps: true,
+          }]
+        },
+        options: {
+          ...chartDefaults,
+          scales: {
+            ...chartDefaults.scales,
+            y: { ...chartDefaults.scales.y, min: 0, max: 10, title: { display: true, text: '/10', color: '#64748b' } },
           },
         },
       })

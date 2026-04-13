@@ -50,7 +50,7 @@ switch (cmd) {
         const status = await res.json() as { ok: boolean; apiKey: boolean }
         console.log(`Server: running on port ${config.port}`)
         console.log(`API key: ${status.apiKey ? "present" : "not configured"}`)
-        console.log(`Dashboard: ${SERVER_URL}/dashboard`)
+        console.log(`Dashboard: http://localhost:${config.port}/dashboard`)
       } else {
         console.log("Server: not responding")
       }

@@ -17,33 +17,46 @@ const FALLBACK_REASON =
   "Votre prompt semble ambigu. Pourriez-vous préciser ce que vous souhaitez faire ?"
 
 function isAmbiguous(text: string): boolean {
-  return text.length < 30 || AMBIGUITY_TRIGGERS.some((r) => r.test(text))
+  const len = text.trim().length
+  // Very short: always ambiguous
+  if (len < 10) return true
+  const matches = AMBIGUITY_TRIGGERS.filter((r) => r.test(text)).length
+  // Medium length: one trigger is enough
+  if (len < 40) return matches >= 1
+  // Long prompt: require at least two independent signals
+  return matches >= 2
 }
 
-async function getSuggestion(text: string): Promise<string | null> {
-  if (!config.anthropic_api_key) return null
+type SuggestionResult =
+  | { status: "question"; text: string }  // Haiku generated a clarifying question
+  | { status: "clear" }                   // Haiku says prompt is clear
+  | { status: "unavailable" }             // timeout, error, or no API key
+
+async function getSuggestion(text: string): Promise<SuggestionResult> {
+  if (!config.anthropic_api_key) return { status: "unavailable" }
 
   const client = new Anthropic({ apiKey: config.anthropic_api_key })
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), 1200)
 
-  const haiku = client.messages
-    .create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 80,
-      system:
-        "You detect ambiguous prompts. Respond with ONE short clarifying question (max 15 words). Respond in the same language as the input. If the text is already clear and specific, respond with an empty string.",
-      messages: [{ role: "user", content: text }],
-    })
-    .catch(() => null)
-
-  const timeout = new Promise<null>((resolve) =>
-    setTimeout(() => resolve(null), 400)
-  )
-  const result = await Promise.race([haiku, timeout])
-
-  if (!result) return null
-  const suggestion =
-    result.content[0]?.type === "text" ? result.content[0].text.trim() : null
-  return suggestion && suggestion.length > 0 ? suggestion : null
+  try {
+    const result = await client.messages.create(
+      {
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 80,
+        system:
+          "You detect ambiguous prompts. Respond with ONE short clarifying question (max 20 words). Respond in the same language as the input. If the text is already clear and specific, respond with an empty string.",
+        messages: [{ role: "user", content: text }],
+      },
+      { signal: abort.signal }
+    )
+    const text_ = result.content[0]?.type === "text" ? result.content[0].text.trim() : ""
+    return text_.length > 0 ? { status: "question", text: text_ } : { status: "clear" }
+  } catch {
+    return { status: "unavailable" }
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export async function handleUserPrompt(body: unknown): Promise<Response> {
@@ -70,12 +83,14 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
 
   const suggestion = await getSuggestion(prompt)
 
-  // Haiku said it's clear (empty response) → let it through
-  if (suggestion === null && prompt.length >= 15) {
+  // Haiku explicitly says clear → trust it regardless of length
+  if (suggestion.status === "clear") {
     return new Response("{}", { headers: { "Content-Type": "application/json" } })
   }
 
-  const reason = suggestion ?? FALLBACK_REASON
+  const reason = suggestion.status === "question"
+    ? `[IA] ${suggestion.text}`
+    : `[heuristique] ${FALLBACK_REASON}`
 
   // Log to ambiguities — fire-and-forget
   db.query(
