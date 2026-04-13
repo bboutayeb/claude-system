@@ -2,14 +2,6 @@ import { Pool } from "pg"
 import Anthropic from "@anthropic-ai/sdk"
 import { config } from "../config"
 
-if (!config.anthropic_api_key) {
-  console.log("[quality-scorer] ANTHROPIC_API_KEY not set — skipping")
-  process.exit(0)
-}
-
-const pool = new Pool({ connectionString: config.db_url })
-const client = new Anthropic({ apiKey: config.anthropic_api_key })
-
 interface PromptRow {
   id: number
   prompt_text: string
@@ -63,7 +55,7 @@ function findAssistantResponse(lines: string[], promptText: string): string | nu
 
 // ─── Scoring ──────────────────────────────────────────────────────────────────
 
-async function scoreExchange(prompt: string, response: string): Promise<number> {
+async function scoreExchange(client: Anthropic, prompt: string, response: string): Promise<number> {
   const result = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 10,
@@ -82,26 +74,13 @@ Respond with ONLY a single integer from 1 to 10. Nothing else.`,
   return score >= 1 && score <= 10 ? score : 5
 }
 
-// ─── Runner ───────────────────────────────────────────────────────────────────
+// ─── Core scoring logic ───────────────────────────────────────────────────────
 
-async function runAll() {
-  const { rows: prompts } = await pool.query<PromptRow>(
-    `SELECT p.id, p.prompt_text, p.session_id, s.transcript_path
-     FROM prompts p
-     JOIN sessions s ON p.session_id = s.id
-     WHERE p.quality_score IS NULL
-       AND s.transcript_path IS NOT NULL
-     ORDER BY p.created_at DESC
-     LIMIT 50`
-  )
-
-  if (prompts.length === 0) {
-    console.log("No unscored prompts with transcripts.")
-    await pool.end()
-    return
-  }
-
-  console.log(`Scoring ${prompts.length} prompt(s)...`)
+async function scorePrompts(
+  pool: Pool,
+  client: Anthropic,
+  prompts: PromptRow[]
+): Promise<{ scored: number; skipped: number }> {
   let scored = 0
   let skipped = 0
 
@@ -124,7 +103,7 @@ async function runAll() {
         continue
       }
 
-      const score = await scoreExchange(row.prompt_text, response)
+      const score = await scoreExchange(client, row.prompt_text, response)
       await pool.query("UPDATE prompts SET quality_score = $1 WHERE id = $2", [score, row.id])
       console.log(`  [OK]   #${row.id} score=${score}`)
       scored++
@@ -136,11 +115,76 @@ async function runAll() {
     }
   }
 
-  console.log(`\n${scored} scored, ${skipped} skipped`)
-  await pool.end()
+  return { scored, skipped }
 }
 
-runAll().catch((err) => {
-  console.error("[quality-scorer] fatal:", err.message)
-  process.exit(1)
-})
+// ─── Exported functions ───────────────────────────────────────────────────────
+
+export async function scoreSession(sessionId: string, maxPrompts = 50): Promise<void> {
+  if (!config.anthropic_api_key) {
+    console.log("[quality-scorer] ANTHROPIC_API_KEY not set — skipping")
+    return
+  }
+
+  const pool = new Pool({ connectionString: config.db_url })
+  const client = new Anthropic({ apiKey: config.anthropic_api_key })
+
+  try {
+    const { rows: prompts } = await pool.query<PromptRow>(
+      `SELECT p.id, p.prompt_text, p.session_id, s.transcript_path
+       FROM prompts p
+       JOIN sessions s ON p.session_id = s.id
+       WHERE p.quality_score IS NULL
+         AND p.session_id = $1
+         AND s.transcript_path IS NOT NULL
+       ORDER BY p.created_at DESC
+       LIMIT $2`,
+      [sessionId, maxPrompts]
+    )
+
+    if (prompts.length === 0) {
+      console.log(`[quality-scorer] no unscored prompts for session ${sessionId}`)
+      return
+    }
+
+    console.log(`[quality-scorer] scoring ${prompts.length} prompt(s) for session ${sessionId}`)
+    const { scored, skipped } = await scorePrompts(pool, client, prompts)
+    console.log(`[quality-scorer] ${scored} scored, ${skipped} skipped`)
+  } finally {
+    await pool.end()
+  }
+}
+
+export async function runAll(maxPrompts = 20): Promise<void> {
+  if (!config.anthropic_api_key) {
+    console.log("[quality-scorer] ANTHROPIC_API_KEY not set — skipping")
+    return
+  }
+
+  const pool = new Pool({ connectionString: config.db_url })
+  const client = new Anthropic({ apiKey: config.anthropic_api_key })
+
+  try {
+    const { rows: prompts } = await pool.query<PromptRow>(
+      `SELECT p.id, p.prompt_text, p.session_id, s.transcript_path
+       FROM prompts p
+       JOIN sessions s ON p.session_id = s.id
+       WHERE p.quality_score IS NULL
+         AND s.transcript_path IS NOT NULL
+       ORDER BY p.created_at DESC
+       LIMIT $1`,
+      [maxPrompts]
+    )
+
+    if (prompts.length === 0) {
+      console.log("No unscored prompts with transcripts.")
+      return
+    }
+
+    console.log(`Scoring ${prompts.length} prompt(s)...`)
+    const { scored, skipped } = await scorePrompts(pool, client, prompts)
+    console.log(`\n${scored} scored, ${skipped} skipped`)
+  } finally {
+    await pool.end()
+  }
+}
