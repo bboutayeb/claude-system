@@ -199,4 +199,3 @@ Plutôt que de scorer chaque prompt isolément, le scoring temps réel évalue u
 | `feat/quality-scorer-auto-stop` | ✅ Merged | → `integ` 2026-04-14 |
 | `feat/haiku-cost-metrics` | ✅ Merged | → `integ` 2026-04-14 |
 | `feat/feedback-false-positives` | ✅ Merged | → `integ` 2026-04-14 |
-| `feat/rebuild-binary-v0.2.0` | En cours | Étape 6 |
