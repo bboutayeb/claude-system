@@ -1,3 +1,5 @@
+name: claude-monitor
+
 services:
   postgres:
     image: postgres:17
@@ -17,3 +19,5 @@ services:
 
 volumes:
   postgres_data:
+    external: true
+    name: claude-monitor_postgres_data
