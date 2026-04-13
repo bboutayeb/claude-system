@@ -27,21 +27,31 @@ function findAssistantResponse(lines: string[], promptText: string): string | nu
 
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i]
-    if (e?.type === "human" || e?.role === "user") {
-      const content = typeof e.message?.content === "string"
-        ? e.message.content
-        : e.content
-      if (typeof content === "string" && content.includes(promptText.slice(0, 100))) {
+    const isUser = e?.type === "user" || e?.message?.role === "user"
+    if (isUser) {
+      const content = e.message?.content ?? e.content
+      const text = typeof content === "string" ? content
+        : Array.isArray(content) ? content.filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("\n")
+        : null
+      if (typeof text === "string" && text.includes(promptText.slice(0, 100))) {
         for (let j = i + 1; j < entries.length; j++) {
           const next = entries[j]
-          if (next?.type === "assistant" || next?.role === "assistant") {
-            const resp = next.message?.content ?? next.content
-            if (typeof resp === "string") return resp
+          // Stop at next real human message (not tool_result)
+          if (next?.type === "user" || next?.message?.role === "user") {
+            const c = next?.message?.content
+            const isToolResult = Array.isArray(c) && c.some((b: { type: string }) => b.type === "tool_result")
+            if (!isToolResult) break
+          }
+          const isAssistant = next?.message?.role === "assistant" || next?.type === "assistant"
+          if (isAssistant) {
+            const resp = next.message?.content
+            if (typeof resp === "string" && resp) return resp
             if (Array.isArray(resp)) {
-              return resp
+              const text = resp
                 .filter((b: { type: string }) => b.type === "text")
                 .map((b: { text: string }) => b.text)
                 .join("\n")
+              if (text) return text  // skip thinking-only blocks, keep looking
             }
           }
         }

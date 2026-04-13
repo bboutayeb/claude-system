@@ -18,6 +18,11 @@ L'installateur :
 > **Prérequis** : [Docker](https://docs.docker.com/get-docker/) et `ANTHROPIC_API_KEY` dans l'environnement.
 > **WSL2** : utiliser `localhost` (pas `127.0.0.1`) dans le navigateur Windows pour le dashboard.
 
+Ajouter le binaire au PATH (une seule fois) :
+```bash
+echo 'export PATH="$HOME/.claude-monitor/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+```
+
 ---
 
 ## Utilisation
