@@ -17,31 +17,41 @@ export async function handleAmbiguityList(url: URL): Promise<Response> {
 }
 
 export async function handleAmbiguityFeedback(body: unknown): Promise<Response> {
-  const { id, false_positive } = body as { id?: unknown; false_positive?: unknown }
+  const { id } = body as { id?: unknown }
 
-  if (typeof id !== "number" || typeof false_positive !== "boolean") {
+  if (typeof id !== "number") {
     return new Response(
-      JSON.stringify({ error: "id (number) and false_positive (boolean) required" }),
+      JSON.stringify({ error: "id (number) required" }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     )
   }
 
-  const { rows } = await db.query(
-    "UPDATE ambiguities SET false_positive = $1 WHERE id = $2 RETURNING id",
-    [false_positive, id]
+  // Toggle cycle: NULL → true → NULL
+  // Query current state, then flip it
+  const { rows: current } = await db.query(
+    "SELECT false_positive FROM ambiguities WHERE id = $1",
+    [id]
   )
 
-  if (rows.length === 0) {
+  if (current.length === 0) {
     return new Response(JSON.stringify({ error: "not found" }), {
       status: 404,
       headers: { "Content-Type": "application/json" },
     })
   }
 
+  const currentValue = current[0].false_positive as boolean | null
+  const newValue = currentValue === true ? null : true
+
+  await db.query(
+    "UPDATE ambiguities SET false_positive = $1 WHERE id = $2",
+    [newValue, id]
+  )
+
   // Refresh in-memory allowlist after each feedback
   loadAllowlist().catch(() => {})
 
-  return new Response(JSON.stringify({ ok: true }), {
+  return new Response(JSON.stringify({ ok: true, false_positive: newValue }), {
     headers: { "Content-Type": "application/json" },
   })
 }

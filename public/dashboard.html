@@ -254,11 +254,11 @@
       }
     }
 
-    async function toggleFp(id, fp) {
+    async function toggleFp(id) {
       await fetch('/ambiguity/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, false_positive: fp }),
+        body: JSON.stringify({ id }),
       })
       load(document.getElementById('days').value)
     }
@@ -446,7 +446,7 @@
               <td>${a.source || '—'}</td>
               <td title="${a.prompt_text.replace(/"/g, '&quot;')}">${prompt}</td>
               <td>${suggestion}</td>
-              <td><button class="btn-fp${isFp ? ' active' : ''}" onclick="toggleFp(${a.id}, ${!isFp})">${isFp ? 'Faux positif ✓' : 'Marquer FP'}</button></td>
+              <td><button class="btn-fp${isFp ? ' active' : ''}" onclick="toggleFp(${a.id})">${isFp ? 'Faux positif ✓' : 'Marquer FP'}</button></td>
             </tr>`
           }).join('')
 
