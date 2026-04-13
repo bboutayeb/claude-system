@@ -199,7 +199,14 @@ Plutôt que de scorer chaque prompt isolément, le scoring temps réel évalue u
   - ✅ Endpoint `GET /dashboard/haiku-cost?days=N` : coût total + breakdown par source + série journalière
   - ✅ Dashboard : KPI card "Coût Haiku (période)" + graphique barres empilées ambiguity/scoring
   - **Prochaine étape :** Étape 5
-- [ ] **Étape 5** — Feedback faux positifs (populate `ALLOWLISTED_RESPONSES`)
+- [x] **Étape 5** — Feedback faux positifs
+  - ✅ Migration `011_ambiguity_false_positive.sql` : colonne `false_positive BOOLEAN DEFAULT NULL`
+  - ✅ `src/routes/ambiguity.ts` : `handleAmbiguityList` (GET) + `handleAmbiguityFeedback` (POST)
+  - ✅ `user-prompt.ts` : `loadAllowlist()` exporté, alimente `ALLOWLISTED_RESPONSES` depuis DB
+  - ✅ `server.ts` : routes `/dashboard/ambiguities` + `/ambiguity/feedback` + `loadAllowlist()` au démarrage
+  - ✅ Dashboard : table "Ambiguïtés récentes" + bouton "Marquer FP" + taux FP calculé côté client
+  - ✅ Boucle fermée : prompt marqué FP → plus jamais bloqué dès le prochain appel
+  - **Prochaine étape :** Étape 6
 - [ ] **Étape 6** — Rebuild binaire v0.2.0
 
 ### Long terme
@@ -214,6 +221,8 @@ Plutôt que de scorer chaque prompt isolément, le scoring temps réel évalue u
 | Branche | Statut | Notes |
 |---------|--------|-------|
 | `main` | Stable (prod-ready) | Merges uniquement depuis `integ` (releases éprouvées) |
-| `integ` | Intégration | Étapes 1 & 2 mergées ✅ |
+| `integ` | Intégration | Étapes 1-4 mergées ✅ |
 | `feat/allowlist-short-prompts` | ✅ Merged | → `integ` le 2026-04-13 23:19 |
 | `feat/quality-scorer-auto-stop` | ✅ Merged | → `integ` le 2026-04-14 (commit 1973fb3) |
+| `feat/haiku-cost-metrics` | ✅ Merged | → `integ` le 2026-04-14 (commit 8071417) |
+| `feat/feedback-false-positives` | En cours | Étape 5 |
