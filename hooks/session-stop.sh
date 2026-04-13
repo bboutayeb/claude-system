@@ -25,6 +25,6 @@ fi
 
 curl -sf -X POST "${SERVER_URL}/session/stop" \
   -H "Content-Type: application/json" \
-  -d "{\"session_id\": \"$SESSION_ID\", \"usage\": $USAGE}" > /dev/null 2>&1 || true
+  -d "{\"session_id\": \"$SESSION_ID\", \"transcript_path\": \"$TRANSCRIPT\", \"usage\": $USAGE}" > /dev/null 2>&1 || true
 
 exit 0

@@ -16,7 +16,7 @@ fi
 # Read stdin once (Claude Code sends hook payload via stdin)
 PAYLOAD=$(cat 2>/dev/null || echo "{}")
 
-BODY=$(echo "$PAYLOAD" | mise exec -- jq '{session_id, model, source, agent_type}' 2>/dev/null || echo '{}')
+BODY=$(echo "$PAYLOAD" | mise exec -- jq '{session_id, model, source, agent_type, transcript_path}' 2>/dev/null || echo '{}')
 
 curl -sf -X POST "${SERVER_URL}/session/start" \
   -H "Content-Type: application/json" \

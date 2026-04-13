@@ -2,6 +2,7 @@ import { handleSessionStart, handleSessionStop } from "./routes/session"
 import { handlePostTool } from "./routes/post-tool"
 import { handlePreTool } from "./routes/pre-tool"
 import { handleUserPrompt } from "./routes/user-prompt"
+import { handleDashboardKpis, handleDashboardTools, handleDashboardPrompts } from "./routes/dashboard"
 
 const PORT = parseInt(process.env.HOOKS_PORT ?? "18766")
 const hasApiKey = Boolean(process.env.ANTHROPIC_API_KEY)
@@ -29,6 +30,22 @@ const server = Bun.serve({
       return new Response(JSON.stringify({ ok: true, apiKey: hasApiKey }), {
         headers: { "Content-Type": "application/json" },
       })
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/dashboard")) {
+      if (url.pathname === "/dashboard") {
+        return new Response(Bun.file(`${import.meta.dir}/../public/dashboard.html`), {
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        })
+      }
+      switch (url.pathname) {
+        case "/dashboard/kpis":
+          return handleDashboardKpis(url)
+        case "/dashboard/tools":
+          return handleDashboardTools(url)
+        case "/dashboard/prompts":
+          return handleDashboardPrompts(url)
+      }
     }
 
     if (req.method !== "POST") {

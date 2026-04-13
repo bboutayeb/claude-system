@@ -5,6 +5,7 @@
   "scripts": {
     "hooks-server": "bun run hooks-server/server.ts",
     "verify": "bun run agents/verifier.ts",
+    "quality-scorer": "bun run agents/quality-scorer.ts",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down"
   },
