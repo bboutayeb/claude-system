@@ -35,7 +35,7 @@ function findAssistantResponse(lines: string[], promptText: string): string | nu
           }
           const isAssistant = next?.message?.role === "assistant" || next?.type === "assistant"
           if (isAssistant) {
-            const text = extractTextFromContent(next.message?.content)
+            const text = extractTextFromContent(next.message?.content ?? next.content)
             if (text) return text  // skip thinking-only blocks, keep looking
           }
         }
