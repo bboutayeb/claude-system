@@ -1,5 +1,6 @@
 import { db } from "../db"
 import { timers } from "../timers"
+import { maybeScore } from "../agents/realtime-scorer"
 
 interface PostToolPayload {
   session_id?: string
@@ -29,5 +30,6 @@ export async function handlePostTool(body: unknown): Promise<Response> {
      VALUES ($1, $2, $3)`,
     [session_id, tool_name, duration_ms ?? null]
   )
+  if (session_id) maybeScore(session_id).catch(() => {})
   return new Response("ok")
 }

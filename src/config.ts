@@ -14,6 +14,8 @@ interface Config {
   db_url: string
   anthropic_api_key: string | null
   haiku_cost_alert_usd: number | null
+  realtime_scoring: boolean
+  realtime_scoring_throttle_s: number
 }
 
 const DEFAULTS: Config = {
@@ -21,6 +23,8 @@ const DEFAULTS: Config = {
   db_url: "postgresql://claude:claude@localhost:5432/claude_system",
   anthropic_api_key: null,
   haiku_cost_alert_usd: null,
+  realtime_scoring: true,
+  realtime_scoring_throttle_s: 30,
 }
 
 function parsePort(envVal: string | undefined, fileVal: number | undefined): number {
@@ -43,6 +47,8 @@ function loadConfig(): Config {
     db_url: process.env.DATABASE_URL ?? file.db_url ?? DEFAULTS.db_url,
     anthropic_api_key: process.env.ANTHROPIC_API_KEY ?? file.anthropic_api_key ?? null,
     haiku_cost_alert_usd: file.haiku_cost_alert_usd ?? null,
+    realtime_scoring: file.realtime_scoring ?? DEFAULTS.realtime_scoring,
+    realtime_scoring_throttle_s: file.realtime_scoring_throttle_s ?? DEFAULTS.realtime_scoring_throttle_s,
   }
 }
 

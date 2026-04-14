@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import { db } from "../db"
 import { config } from "../config"
 import { calcHaikuCost } from "../lib/haiku-usage"
+import { markNewPrompt } from "../agents/realtime-scorer"
 
 const AMBIGUITY_TRIGGERS = [
   // English deictic references
@@ -125,6 +126,7 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
       "INSERT INTO prompts (session_id, prompt_text, is_ambiguous) VALUES ($1, $2, $3)",
       [session_id ?? null, prompt.slice(0, 2000), false]
     ).catch(() => {})
+    if (session_id) markNewPrompt(session_id)
     return new Response("{}", { headers: { "Content-Type": "application/json" } })
   }
 
@@ -135,6 +137,7 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
     "INSERT INTO prompts (session_id, prompt_text, is_ambiguous) VALUES ($1, $2, $3)",
     [session_id ?? null, prompt.slice(0, 2000), ambiguous]
   ).catch(() => {})
+  if (session_id) markNewPrompt(session_id)
 
   if (!ambiguous) {
     return new Response("{}", { headers: { "Content-Type": "application/json" } })

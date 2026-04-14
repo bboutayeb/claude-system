@@ -56,13 +56,13 @@ function findAssistantResponse(lines: string[], promptText: string): string | nu
 
 // ─── Scoring ──────────────────────────────────────────────────────────────────
 
-interface ScoreResult {
+export interface ScoreResult {
   score: number
   inputTokens: number
   outputTokens: number
 }
 
-async function scoreExchange(client: Anthropic, prompt: string, response: string): Promise<ScoreResult> {
+export async function scoreExchange(client: Anthropic, prompt: string, response: string): Promise<ScoreResult> {
   const result = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 10,

@@ -1,4 +1,5 @@
 import { db } from "../db"
+import { clearSession } from "../agents/realtime-scorer"
 
 export async function handleSessionStart(body: unknown): Promise<Response> {
   const { session_id, model, source, agent_type, transcript_path } = body as {
@@ -55,6 +56,7 @@ export async function handleSessionStop(body: unknown): Promise<Response> {
       transcript_path ?? null,
     ]
   )
+  clearSession(session_id)
   console.log(`[session] stopped: ${session_id}`)
   return new Response("ok")
 }
