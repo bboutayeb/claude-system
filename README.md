@@ -12,8 +12,10 @@ et KPIs via hooks, sans dépendance de runtime. Distribué comme un binaire comp
 ## Ce que ça fait
 
 - **Collecte silencieuse** : 5 hooks Claude Code (SessionStart, Stop, PreToolUse, PostToolUse,
-  UserPromptSubmit) → requêtes HTTP fire-and-forget vers un serveur Bun persistant
-- **Latence négligeable** : requête HTTP fire-and-forget ~0,2 ms (un process Bun démarré à froid coûte ~230 ms — le serveur persistant évite ce coût à chaque hook)
+  UserPromptSubmit) → requêtes HTTP vers un serveur Bun persistant. Les 4 premiers hooks sont
+  fire-and-forget (timeout borné). `UserPromptSubmit` attend la réponse pour écrire sur stdout
+  (détection d'ambiguïté synchrone).
+- **Latence négligeable** : ~0,2 ms par hook HTTP (un process Bun démarré à froid coûte ~230 ms — le serveur persistant évite ce coût à chaque appel)
 - **Tokens & coût** : input/output/cache agrégés par session depuis les transcripts JSONL
 - **Durée des outils** : chronomètre in-memory PreToolUse → PostToolUse
 - **Détection d'ambiguïté** : prompts courts ou déictiques → clarification via Claude Haiku
