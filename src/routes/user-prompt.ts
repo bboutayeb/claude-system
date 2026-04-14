@@ -90,9 +90,14 @@ async function getSuggestion(text: string): Promise<SuggestionResult> {
   }
 }
 
+let lastAlertCheck = 0
+
 function checkHaikuAlert(): void {
   const limit = config.haiku_cost_alert_usd
   if (limit == null) return
+  const now = Date.now()
+  if (now - lastAlertCheck < 60_000) return
+  lastAlertCheck = now
   db.query(
     "SELECT COALESCE(SUM(cost_usd), 0) AS total FROM haiku_usage WHERE created_at >= CURRENT_DATE",
     []

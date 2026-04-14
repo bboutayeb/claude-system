@@ -1,8 +1,9 @@
 import { db } from "../db"
+import { parseDays } from "./dashboard"
 import { loadAllowlist } from "./user-prompt"
 
 export async function handleAmbiguityList(url: URL): Promise<Response> {
-  const days = parseInt(url.searchParams.get("days") ?? "7") || 7
+  const days = parseDays(url)
   const { rows } = await db.query(
     `SELECT id, session_id, prompt_text, suggestion, source, detected_at, false_positive
      FROM ambiguities
@@ -26,32 +27,26 @@ export async function handleAmbiguityFeedback(body: unknown): Promise<Response> 
     )
   }
 
-  // Toggle cycle: NULL → true → NULL
-  // Query current state, then flip it
-  const { rows: current } = await db.query(
-    "SELECT false_positive FROM ambiguities WHERE id = $1",
+  // Toggle cycle: NULL → true → NULL — single atomic update avoids race condition
+  const { rows } = await db.query(
+    `UPDATE ambiguities
+     SET false_positive = CASE WHEN false_positive = true THEN NULL ELSE true END
+     WHERE id = $1
+     RETURNING false_positive`,
     [id]
   )
 
-  if (current.length === 0) {
+  if (rows.length === 0) {
     return new Response(JSON.stringify({ error: "not found" }), {
       status: 404,
       headers: { "Content-Type": "application/json" },
     })
   }
 
-  const currentValue = current[0].false_positive as boolean | null
-  const newValue = currentValue === true ? null : true
-
-  await db.query(
-    "UPDATE ambiguities SET false_positive = $1 WHERE id = $2",
-    [newValue, id]
-  )
-
   // Refresh in-memory allowlist after each feedback
   loadAllowlist().catch(() => {})
 
-  return new Response(JSON.stringify({ ok: true, false_positive: newValue }), {
+  return new Response(JSON.stringify({ ok: true, false_positive: rows[0].false_positive }), {
     headers: { "Content-Type": "application/json" },
   })
 }

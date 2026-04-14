@@ -1,6 +1,6 @@
 import { db } from "../db"
 
-function parseDays(url: URL): number {
+export function parseDays(url: URL): number {
   const raw = parseInt(url.searchParams.get("days") ?? "7", 10)
   return Math.min(90, Math.max(1, isNaN(raw) ? 7 : raw))
 }
