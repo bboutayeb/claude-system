@@ -3,6 +3,7 @@ import { db } from "../db"
 import { config } from "../config"
 import { scoreExchange } from "./quality-scorer"
 import { calcHaikuCost } from "../lib/haiku-usage"
+import { extractTextFromContent } from "../lib/transcript"
 
 // ─── In-memory session state ──────────────────────────────────────────────────
 
@@ -39,15 +40,7 @@ function extractRecentExchanges(lines: string[], count = 3): Exchange[] {
     const isAssistant = e?.message?.role === "assistant" || e?.type === "assistant"
     if (!isAssistant) continue
 
-    const resp = e.message?.content
-    let responseText = ""
-    if (typeof resp === "string") responseText = resp
-    else if (Array.isArray(resp)) {
-      responseText = resp
-        .filter((b: { type: string }) => b.type === "text")
-        .map((b: { text: string }) => b.text)
-        .join("\n")
-    }
+    const responseText = extractTextFromContent(e.message?.content)
     if (!responseText) continue
 
     // Find preceding user message (skip tool_result entries)
@@ -58,11 +51,7 @@ function extractRecentExchanges(lines: string[], count = 3): Exchange[] {
       const c = u?.message?.content
       if (Array.isArray(c) && c.some((b: { type: string }) => b.type === "tool_result")) continue
 
-      const content = u.message?.content ?? u.content
-      const promptText = typeof content === "string" ? content
-        : Array.isArray(content)
-          ? content.filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("\n")
-          : null
+      const promptText = extractTextFromContent(u.message?.content ?? u.content)
       if (promptText) exchanges.unshift({ prompt: promptText, response: responseText })
       break
     }
@@ -116,20 +105,16 @@ export async function maybeScore(sessionId: string): Promise<void> {
     const exchanges = extractRecentExchanges(lines, 3)
     if (exchanges.length === 0) return
 
+    const { rows: targets } = await db.query(
+      "SELECT id FROM prompts WHERE session_id = $1 AND quality_score IS NULL ORDER BY created_at DESC LIMIT 1",
+      [sessionId]
+    )
+    if (targets.length === 0) { s.lastScoreTs = Date.now(); return }
+
     const last = exchanges[exchanges.length - 1]
     const { score, inputTokens, outputTokens } = await scoreExchange(api, last.prompt, last.response)
 
-    const updateResult = await db.query(
-      `UPDATE prompts SET quality_score = $1
-       WHERE id = (
-         SELECT id FROM prompts
-         WHERE session_id = $2 AND quality_score IS NULL
-         ORDER BY created_at DESC LIMIT 1
-       )`,
-      [score, sessionId]
-    )
-
-    if ((updateResult.rowCount ?? 0) === 0) return
+    await db.query("UPDATE prompts SET quality_score = $1 WHERE id = $2", [score, targets[0].id])
 
     s.lastScoreTs = Date.now()
     const cost = calcHaikuCost(inputTokens, outputTokens)
