@@ -93,7 +93,8 @@ export async function handleDashboardProjects(): Promise<Response> {
   const { rows } = await db.query(
     `SELECT DISTINCT project FROM sessions
      WHERE project IS NOT NULL
-     ORDER BY project`
+     ORDER BY project
+     LIMIT 50`
   )
   return new Response(JSON.stringify({ projects: rows.map(r => r.project) }), {
     headers: { "Content-Type": "application/json" },
