@@ -7,7 +7,7 @@ export const PID_FILE = `${MONITOR_DIR}/monitor.pid`
 export const BIN_DIR = `${MONITOR_DIR}/bin`
 export const BIN_PATH = `${BIN_DIR}/claude-monitor`
 
-export const VERSION = "0.1.0"
+export const VERSION = "0.2.0"
 
 interface Config {
   port: number
