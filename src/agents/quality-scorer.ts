@@ -2,6 +2,7 @@ import { Pool } from "pg"
 import Anthropic from "@anthropic-ai/sdk"
 import { config } from "../config"
 import { calcHaikuCost } from "../lib/haiku-usage"
+import { extractTextFromContent } from "../lib/transcript"
 
 interface PromptRow {
   id: number
@@ -22,11 +23,8 @@ function findAssistantResponse(lines: string[], promptText: string): string | nu
     const e = entries[i]
     const isUser = e?.type === "user" || e?.message?.role === "user"
     if (isUser) {
-      const content = e.message?.content ?? e.content
-      const text = typeof content === "string" ? content
-        : Array.isArray(content) ? content.filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("\n")
-        : null
-      if (typeof text === "string" && text.includes(promptText.slice(0, 100))) {
+      const text = extractTextFromContent(e.message?.content ?? e.content)
+      if (text.includes(promptText.slice(0, 100))) {
         for (let j = i + 1; j < entries.length; j++) {
           const next = entries[j]
           // Stop at next real human message (not tool_result)
@@ -37,15 +35,8 @@ function findAssistantResponse(lines: string[], promptText: string): string | nu
           }
           const isAssistant = next?.message?.role === "assistant" || next?.type === "assistant"
           if (isAssistant) {
-            const resp = next.message?.content
-            if (typeof resp === "string" && resp) return resp
-            if (Array.isArray(resp)) {
-              const text = resp
-                .filter((b: { type: string }) => b.type === "text")
-                .map((b: { text: string }) => b.text)
-                .join("\n")
-              if (text) return text  // skip thinking-only blocks, keep looking
-            }
+            const text = extractTextFromContent(next.message?.content)
+            if (text) return text  // skip thinking-only blocks, keep looking
           }
         }
       }
