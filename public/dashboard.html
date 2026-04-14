@@ -132,11 +132,16 @@
 <body>
   <header>
     <h1>Claude System — Dashboard</h1>
-    <select id="days">
-      <option value="7">7 jours</option>
-      <option value="14">14 jours</option>
-      <option value="30">30 jours</option>
-    </select>
+    <div style="display:flex;gap:0.75rem;align-items:center">
+      <select id="project-filter">
+        <option value="">Tous les projets</option>
+      </select>
+      <select id="days">
+        <option value="7">7 jours</option>
+        <option value="14">14 jours</option>
+        <option value="30">30 jours</option>
+      </select>
+    </div>
   </header>
 
   <div class="counters">
@@ -159,6 +164,16 @@
     <div class="card">
       <div class="card-label">Coût Haiku (période)</div>
       <div class="card-value" id="cnt-haiku-cost">—</div>
+    </div>
+  </div>
+
+  <div id="project-stats-section" class="card" style="margin-bottom:1.5rem;display:none">
+    <div class="card-label" id="project-stats-label">Projet : —</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-top:0.75rem">
+      <div><div class="card-label">Sessions</div><div class="card-value" id="ps-sessions">—</div></div>
+      <div><div class="card-label">Prompts</div><div class="card-value" id="ps-prompts">—</div></div>
+      <div><div class="card-label">Qualité moy.</div><div class="card-value" id="ps-quality">—</div></div>
+      <div><div class="card-label">Ambiguïtés</div><div class="card-value" id="ps-ambiguities">—</div></div>
     </div>
   </div>
 
@@ -217,6 +232,7 @@
         <thead>
           <tr>
             <th>Date</th>
+            <th>Projet</th>
             <th>Modèle</th>
             <th>Prompts</th>
             <th>Score moy.</th>
@@ -263,12 +279,25 @@
       load(document.getElementById('days').value)
     }
 
+    async function loadProjects() {
+      const res = await fetch('/dashboard/projects')
+      const { projects } = await res.json()
+      const sel = document.getElementById('project-filter')
+      sel.innerHTML = '<option value="">Tous les projets</option>'
+        + projects.map(p => `<option value="${p}">${p}</option>`).join('')
+      const saved = sessionStorage.getItem('selectedProject') || ''
+      if (projects.includes(saved)) sel.value = saved
+    }
+
     async function load(days) {
+      const project = document.getElementById('project-filter').value
+      const projectParam = project ? `&project=${encodeURIComponent(project)}` : ''
+
       const [kpisRes, toolsRes, promptsRes, sessionsRes, haikuRes, ambigRes] = await Promise.all([
         fetch(`/dashboard/kpis?days=${days}`),
         fetch(`/dashboard/tools?days=${days}`),
         fetch(`/dashboard/prompts?days=${days}`),
-        fetch(`/dashboard/sessions?days=${days}`),
+        fetch(`/dashboard/sessions?days=${days}${projectParam}`),
         fetch(`/dashboard/haiku-cost?days=${days}`),
         fetch(`/dashboard/ambiguities?days=${days}`),
       ])
@@ -454,6 +483,7 @@
       const tbody = document.getElementById('sessions-tbody')
       tbody.innerHTML = sessions.map(s => {
         const date = new Date(s.started_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+        const proj = s.project || '—'
         const model = s.model ? s.model.split('-').slice(-2).join('-') : '—'
         const score = s.avg_quality != null ? parseFloat(s.avg_quality).toFixed(1) + ' /10' : '—'
         const ambigus = parseInt(s.ambiguity_count) || 0
@@ -463,12 +493,34 @@
         const link = s.transcript_path
           ? `<a class="transcript-link" href="/transcript?path=${encodeURIComponent(s.transcript_path)}" target="_blank">📄</a>`
           : '—'
-        return `<tr><td>${date}</td><td>${model}</td><td>${parseInt(s.prompt_count) || 0}</td><td>${score}</td><td>${ambigus}</td><td>${source}</td><td>${link}</td></tr>`
+        return `<tr><td>${date}</td><td>${proj}</td><td>${model}</td><td>${parseInt(s.prompt_count) || 0}</td><td>${score}</td><td>${ambigus}</td><td>${source}</td><td>${link}</td></tr>`
       }).join('')
+
+      // Project stats card
+      const psSection = document.getElementById('project-stats-section')
+      const currentProject = document.getElementById('project-filter').value
+      if (currentProject) {
+        const psRes = await fetch(`/dashboard/project-stats?project=${encodeURIComponent(currentProject)}&days=${days}`)
+        const { stats } = await psRes.json()
+        if (stats) {
+          document.getElementById('project-stats-label').textContent = `Projet : ${currentProject}`
+          document.getElementById('ps-sessions').textContent = fmt(stats.total_sessions)
+          document.getElementById('ps-prompts').textContent = fmt(stats.total_prompts)
+          document.getElementById('ps-quality').textContent = stats.avg_quality != null ? parseFloat(stats.avg_quality).toFixed(1) + ' /10' : '—'
+          document.getElementById('ps-ambiguities').textContent = fmt(stats.total_ambiguities)
+          psSection.style.display = ''
+        }
+      } else {
+        psSection.style.display = 'none'
+      }
     }
 
     document.getElementById('days').addEventListener('change', e => load(e.target.value))
-    load(7)
+    document.getElementById('project-filter').addEventListener('change', e => {
+      sessionStorage.setItem('selectedProject', e.target.value)
+      load(document.getElementById('days').value)
+    })
+    loadProjects().then(() => load(7))
   </script>
 </body>
 </html>

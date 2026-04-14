@@ -186,6 +186,25 @@ Le projet `claude-monitor` est fonctionnel (hooks, dashboard, quality scorer, am
 
 ---
 
+### Étape 7 — Scoring temps réel (long terme, ~2h)
+
+**Problème :** Le scoring qualité était batch uniquement (hook `Stop`). Pas de feedback pendant la session. Les prompts courts (`oui`, `continue`) ne peuvent pas être scorés isolément.
+
+**Fichiers :** `infra/db/migrations/012_haiku_usage_realtime_source.sql`, `src/agents/realtime-scorer.ts` (nouveau), `src/agents/quality-scorer.ts`, `src/config.ts`, `src/routes/post-tool.ts`, `src/routes/user-prompt.ts`, `src/routes/session.ts`
+
+**Approche :** Scoring par échange complet (prompt courant + contexte 2-3 messages). Throttle 30s/session. Fire-and-forget depuis `PostToolUse`. Le scoring batch au `Stop` reste en filet de sécurité.
+
+**Réalisation :**
+- ✅ Migration `012_haiku_usage_realtime_source.sql` : CHECK constraint étendu avec `realtime-scoring`
+- ✅ `realtime-scorer.ts` : `markNewPrompt()`, `maybeScore()`, `clearSession()` + state Map en mémoire
+- ✅ `quality-scorer.ts` : exports `scoreExchange`, `findAssistantResponse`, `ScoreResult`
+- ✅ `config.ts` : champs `realtime_scoring` (défaut true) + `realtime_scoring_throttle_s` (défaut 30)
+- ✅ Routes wirées : `post-tool.ts` (fire-and-forget) + `user-prompt.ts` (markNewPrompt) + `session.ts` (clearSession)
+- ✅ Deux race conditions corrigées dans `maybeScore` (lastScoreTs mis à jour avant l'appel API, clearSession dans finally)
+- ✅ Mergé dans `integ` (commit: `867fc09`, 2026-04-14)
+
+---
+
 ## PRESENT — Étape en cours
 
 → Voir `docs/plans/roadmap-current.md`
@@ -194,15 +213,7 @@ Le projet `claude-monitor` est fonctionnel (hooks, dashboard, quality scorer, am
 
 ## FUTURE — Étapes à venir
 
-### Étape 8 — Multi-projets (long terme, ~2h)
-
-**Problème :** Toutes les sessions sont agrégées sans distinction de projet.
-
-**Changements :**
-1. Ajouter `cwd TEXT` à `sessions` (capturé depuis le payload hook `SessionStart`)
-2. Extraire le nom de projet depuis le `cwd` (dernier segment du path)
-3. Filtrer le dashboard par projet (dropdown dans le header)
-4. Segmenter les KPI snapshots par projet (clé composite `snapshot_date + project`)
+*(aucune — Étape 8 est l'étape en cours)*
 
 ---
 
@@ -211,10 +222,11 @@ Le projet `claude-monitor` est fonctionnel (hooks, dashboard, quality scorer, am
 | Branche | Statut | Notes |
 |---------|--------|-------|
 | `main` | Stable (prod-ready) | Merges uniquement depuis `integ` (releases éprouvées) |
-| `integ` | Intégration | Étapes 1–6 mergées ✅ |
+| `integ` | Intégration | Étapes 1–7 mergées ✅ |
 | `feat/allowlist-short-prompts` | ✅ Merged | → `integ` 2026-04-13 |
 | `feat/quality-scorer-auto-stop` | ✅ Merged | → `integ` 2026-04-14 |
 | `feat/haiku-cost-metrics` | ✅ Merged | → `integ` 2026-04-14 |
 | `feat/feedback-false-positives` | ✅ Merged | → `integ` 2026-04-14 |
 | `feat/rebuild-binary-v0.2.0` | ✅ Merged | → `main` 2026-04-14 (tag v0.2.0) |
-| `feat/realtime-scoring` | 🔄 En cours | → `integ` (étape 7) |
+| `feat/realtime-scoring` | ✅ Merged | → `integ` 2026-04-14 |
+| `feat/multi-projects` | 🔄 En cours | → `integ` (étape 8) |

@@ -3,7 +3,7 @@ import { handleSessionStart, handleSessionStop } from "./routes/session"
 import { handlePostTool } from "./routes/post-tool"
 import { handlePreTool } from "./routes/pre-tool"
 import { handleUserPrompt, loadAllowlist } from "./routes/user-prompt"
-import { handleDashboardKpis, handleDashboardTools, handleDashboardPrompts, handleDashboardSessions, handleDashboardHaikuCost, handleTranscript } from "./routes/dashboard"
+import { handleDashboardKpis, handleDashboardTools, handleDashboardPrompts, handleDashboardSessions, handleDashboardHaikuCost, handleDashboardProjects, handleDashboardProjectStats, handleTranscript } from "./routes/dashboard"
 import { handleAmbiguityList, handleAmbiguityFeedback } from "./routes/ambiguity"
 import { config, PID_FILE, MONITOR_DIR } from "./config"
 
@@ -57,6 +57,10 @@ export function startServer() {
             return handleDashboardHaikuCost(url)
           case "/dashboard/ambiguities":
             return handleAmbiguityList(url)
+          case "/dashboard/projects":
+            return handleDashboardProjects()
+          case "/dashboard/project-stats":
+            return handleDashboardProjectStats(url)
           default:
             return new Response("not found", { status: 404 })
         }

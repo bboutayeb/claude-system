@@ -94,6 +94,7 @@ async function onSessionStart(payload: Record<string, unknown>): Promise<void> {
     source: payload.source,
     agent_type: payload.agent_type,
     transcript_path: payload.transcript_path,
+    cwd: payload.cwd,
   }
 
   try {

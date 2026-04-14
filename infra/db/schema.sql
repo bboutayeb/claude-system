@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   model TEXT,
   source TEXT,
   agent_type TEXT,
-  transcript_path TEXT
+  transcript_path TEXT,
+  cwd TEXT,
+  project TEXT
 );
 
 -- ── tool_calls ────────────────────────────────────────────────────────────────

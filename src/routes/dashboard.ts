@@ -61,11 +61,13 @@ export async function handleDashboardPrompts(url: URL): Promise<Response> {
 
 export async function handleDashboardSessions(url: URL): Promise<Response> {
   const days = parseDays(url)
+  const project = url.searchParams.get("project") || null
   const { rows } = await db.query(
     `SELECT s.id,
             s.started_at,
             s.ended_at,
             s.model,
+            s.project,
             s.transcript_path,
             COUNT(DISTINCT p.id)                                             AS prompt_count,
             ROUND(AVG(p.quality_score), 2)                                   AS avg_quality,
@@ -76,12 +78,53 @@ export async function handleDashboardSessions(url: URL): Promise<Response> {
      LEFT JOIN prompts p ON p.session_id = s.id
      LEFT JOIN ambiguities a ON a.session_id = s.id
      WHERE s.started_at >= CURRENT_DATE - $1::int
-     GROUP BY s.id, s.started_at, s.ended_at, s.model, s.transcript_path
+       AND ($2::text IS NULL OR s.project = $2)
+     GROUP BY s.id, s.started_at, s.ended_at, s.model, s.project, s.transcript_path
      ORDER BY s.started_at DESC
      LIMIT 50`,
-    [days]
+    [days, project]
   )
   return new Response(JSON.stringify({ sessions: rows }), {
+    headers: { "Content-Type": "application/json" },
+  })
+}
+
+export async function handleDashboardProjects(): Promise<Response> {
+  const { rows } = await db.query(
+    `SELECT DISTINCT project FROM sessions
+     WHERE project IS NOT NULL
+     ORDER BY project`
+  )
+  return new Response(JSON.stringify({ projects: rows.map(r => r.project) }), {
+    headers: { "Content-Type": "application/json" },
+  })
+}
+
+export async function handleDashboardProjectStats(url: URL): Promise<Response> {
+  const days = parseDays(url)
+  const project = url.searchParams.get("project")
+  if (!project) {
+    return new Response(JSON.stringify({ error: "project required" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+  const { rows } = await db.query(
+    `SELECT
+       COUNT(DISTINCT s.id)                    AS total_sessions,
+       COALESCE(SUM(s.input_tokens), 0)        AS total_input_tokens,
+       COALESCE(SUM(s.output_tokens), 0)       AS total_output_tokens,
+       ROUND(AVG(p.quality_score), 2)          AS avg_quality,
+       COUNT(DISTINCT p.id)                    AS total_prompts,
+       COUNT(DISTINCT a.id)                    AS total_ambiguities
+     FROM sessions s
+     LEFT JOIN prompts p ON p.session_id = s.id
+     LEFT JOIN ambiguities a ON a.session_id = s.id
+     WHERE s.project = $1
+       AND s.started_at >= CURRENT_DATE - $2::int`,
+    [project, days]
+  )
+  return new Response(JSON.stringify({ stats: rows[0] ?? null }), {
     headers: { "Content-Type": "application/json" },
   })
 }

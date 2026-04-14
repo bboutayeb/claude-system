@@ -1,27 +1,33 @@
+import { basename } from "path"
 import { db } from "../db"
 import { clearSession } from "../agents/realtime-scorer"
 
 export async function handleSessionStart(body: unknown): Promise<Response> {
-  const { session_id, model, source, agent_type, transcript_path } = body as {
+  const { session_id, model, source, agent_type, transcript_path, cwd } = body as {
     session_id?: string
     model?: string
     source?: string
     agent_type?: string
     transcript_path?: string
+    cwd?: string
   }
   if (!session_id) return new Response("missing session_id", { status: 400 })
 
+  const project = cwd ? (basename(cwd) || null) : null
+
   await db.query(
-    `INSERT INTO sessions (id, model, source, agent_type, transcript_path)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO sessions (id, model, source, agent_type, transcript_path, cwd, project)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (id) DO UPDATE SET
        model           = COALESCE(EXCLUDED.model, sessions.model),
        source          = COALESCE(EXCLUDED.source, sessions.source),
        agent_type      = COALESCE(EXCLUDED.agent_type, sessions.agent_type),
-       transcript_path = COALESCE(EXCLUDED.transcript_path, sessions.transcript_path)`,
-    [session_id, model ?? null, source ?? null, agent_type ?? null, transcript_path ?? null]
+       transcript_path = COALESCE(EXCLUDED.transcript_path, sessions.transcript_path),
+       cwd             = COALESCE(EXCLUDED.cwd, sessions.cwd),
+       project         = COALESCE(EXCLUDED.project, sessions.project)`,
+    [session_id, model ?? null, source ?? null, agent_type ?? null, transcript_path ?? null, cwd ?? null, project]
   )
-  console.log(`[session] started: ${session_id} model=${model} source=${source}`)
+  console.log(`[session] started: ${session_id} model=${model} project=${project ?? '—'} source=${source}`)
   return new Response("ok")
 }
 
