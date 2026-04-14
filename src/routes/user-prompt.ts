@@ -125,8 +125,7 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
     db.query(
       "INSERT INTO prompts (session_id, prompt_text, is_ambiguous) VALUES ($1, $2, $3)",
       [session_id ?? null, prompt.slice(0, 2000), false]
-    ).catch(() => {})
-    if (session_id) markNewPrompt(session_id)
+    ).then(() => { if (session_id) markNewPrompt(session_id) }).catch(() => {})
     return new Response("{}", { headers: { "Content-Type": "application/json" } })
   }
 
@@ -136,8 +135,7 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
   db.query(
     "INSERT INTO prompts (session_id, prompt_text, is_ambiguous) VALUES ($1, $2, $3)",
     [session_id ?? null, prompt.slice(0, 2000), ambiguous]
-  ).catch(() => {})
-  if (session_id) markNewPrompt(session_id)
+  ).then(() => { if (session_id) markNewPrompt(session_id) }).catch(() => {})
 
   if (!ambiguous) {
     return new Response("{}", { headers: { "Content-Type": "application/json" } })

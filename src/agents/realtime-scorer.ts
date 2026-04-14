@@ -10,6 +10,7 @@ interface SessionState {
   lastPromptTs: number
   lastScoreTs: number
   transcriptPath: string | null
+  inFlight: boolean
 }
 
 const sessions = new Map<string, SessionState>()
@@ -77,24 +78,26 @@ export function markNewPrompt(sessionId: string): void {
   if (s) {
     s.lastPromptTs = Date.now()
   } else {
-    sessions.set(sessionId, { lastPromptTs: Date.now(), lastScoreTs: 0, transcriptPath: null })
+    sessions.set(sessionId, { lastPromptTs: Date.now(), lastScoreTs: 0, transcriptPath: null, inFlight: false })
   }
 }
 
 export async function maybeScore(sessionId: string): Promise<void> {
+  if (!config.realtime_scoring) return
+  const api = getClient()
+  if (!api) return
+
+  const s = sessions.get(sessionId)
+  if (!s) return
+
+  if (s.lastPromptTs <= s.lastScoreTs) return
+  if (s.inFlight) return
+
+  const throttleMs = config.realtime_scoring_throttle_s * 1000
+  if (Date.now() - s.lastScoreTs < throttleMs) return
+
+  s.inFlight = true
   try {
-    if (!config.realtime_scoring) return
-    const api = getClient()
-    if (!api) return
-
-    const s = sessions.get(sessionId)
-    if (!s) return
-
-    if (s.lastPromptTs <= s.lastScoreTs) return
-
-    const throttleMs = config.realtime_scoring_throttle_s * 1000
-    if (Date.now() - s.lastScoreTs < throttleMs) return
-
     if (!s.transcriptPath) {
       const { rows } = await db.query(
         "SELECT transcript_path FROM sessions WHERE id = $1",
@@ -107,34 +110,38 @@ export async function maybeScore(sessionId: string): Promise<void> {
     const file = Bun.file(s.transcriptPath)
     if (!await file.exists()) return
 
-    const text = await file.text()
-    const lines = text.split("\n").slice(-100)
+    const tailBytes = 64 * 1024
+    const text = await file.slice(Math.max(0, file.size - tailBytes), file.size).text()
+    const lines = text.split("\n")
     const exchanges = extractRecentExchanges(lines, 3)
     if (exchanges.length === 0) return
 
     const last = exchanges[exchanges.length - 1]
     const { score, inputTokens, outputTokens } = await scoreExchange(api, last.prompt, last.response)
-    s.lastScoreTs = Date.now()
 
+    const updateResult = await db.query(
+      `UPDATE prompts SET quality_score = $1
+       WHERE id = (
+         SELECT id FROM prompts
+         WHERE session_id = $2 AND quality_score IS NULL
+         ORDER BY created_at DESC LIMIT 1
+       )`,
+      [score, sessionId]
+    )
+
+    if ((updateResult.rowCount ?? 0) === 0) return
+
+    s.lastScoreTs = Date.now()
     const cost = calcHaikuCost(inputTokens, outputTokens)
-    await Promise.all([
-      db.query(
-        `UPDATE prompts SET quality_score = $1
-         WHERE id = (
-           SELECT id FROM prompts
-           WHERE session_id = $2 AND quality_score IS NULL
-           ORDER BY created_at DESC LIMIT 1
-         )`,
-        [score, sessionId]
-      ),
-      db.query(
-        "INSERT INTO haiku_usage (source, input_tokens, output_tokens, cost_usd) VALUES ($1, $2, $3, $4)",
-        ["realtime-scoring", inputTokens, outputTokens, cost]
-      ),
-    ])
+    await db.query(
+      "INSERT INTO haiku_usage (source, input_tokens, output_tokens, cost_usd) VALUES ($1, $2, $3, $4)",
+      ["realtime-scoring", inputTokens, outputTokens, cost]
+    )
     console.log(`[realtime-scorer] session=${sessionId} score=${score}`)
   } catch (err: unknown) {
     console.error(`[realtime-scorer] error: ${(err as Error).message}`)
+  } finally {
+    s.inFlight = false
   }
 }
 
