@@ -1,11 +1,11 @@
-import { writeFileSync } from "fs"
+import { writeFileSync, mkdirSync, unlinkSync } from "fs"
 import { handleSessionStart, handleSessionStop } from "./routes/session"
 import { handlePostTool } from "./routes/post-tool"
 import { handlePreTool } from "./routes/pre-tool"
 import { handleUserPrompt, loadAllowlist } from "./routes/user-prompt"
 import { handleDashboardKpis, handleDashboardTools, handleDashboardPrompts, handleDashboardSessions, handleDashboardHaikuCost, handleTranscript } from "./routes/dashboard"
 import { handleAmbiguityList, handleAmbiguityFeedback } from "./routes/ambiguity"
-import { config, PID_FILE } from "./config"
+import { config, PID_FILE, MONITOR_DIR } from "./config"
 
 // Embedded at build time — Bun resolves this relative to src/
 import dashboardHtml from "../public/dashboard.html" with { type: "text" }
@@ -95,7 +95,11 @@ export function startServer() {
     },
   })
 
-  try { writeFileSync(PID_FILE, String(process.pid), "utf8") } catch {}
+  try {
+    mkdirSync(MONITOR_DIR, { recursive: true })
+    writeFileSync(PID_FILE, String(process.pid), "utf8")
+    process.on("exit", () => { try { unlinkSync(PID_FILE) } catch {} })
+  } catch {}
 
   console.log(`[claude-monitor] server listening on http://127.0.0.1:${config.port}`)
   console.log(`[claude-monitor] ANTHROPIC_API_KEY: ${hasApiKey ? "present" : "not set — Haiku features disabled"}`)

@@ -35,7 +35,7 @@ function loadConfig(): Config {
   return {
     port: parseInt(process.env.HOOKS_PORT ?? String(file.port ?? DEFAULTS.port)),
     db_url: process.env.DATABASE_URL ?? file.db_url ?? DEFAULTS.db_url,
-    anthropic_api_key: file.anthropic_api_key ?? process.env.ANTHROPIC_API_KEY ?? null,
+    anthropic_api_key: process.env.ANTHROPIC_API_KEY ?? file.anthropic_api_key ?? null,
     haiku_cost_alert_usd: file.haiku_cost_alert_usd ?? null,
   }
 }
