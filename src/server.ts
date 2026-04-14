@@ -95,14 +95,21 @@ export function startServer() {
     },
   })
 
+  const cleanupPid = () => {
+    try { unlinkSync(PID_FILE) } catch (err) {
+      if (!(err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT"))
+        console.warn("[claude-monitor] failed to remove PID file:", err)
+    }
+  }
+  process.on("exit", cleanupPid)
+  process.on("SIGTERM", () => { cleanupPid(); process.exit(0) })
+  process.on("SIGINT", () => { cleanupPid(); process.exit(0) })
   try {
     mkdirSync(MONITOR_DIR, { recursive: true })
     writeFileSync(PID_FILE, String(process.pid), "utf8")
-    const cleanupPid = () => { try { unlinkSync(PID_FILE) } catch {} }
-    process.on("exit", cleanupPid)
-    process.on("SIGTERM", () => { cleanupPid(); process.exit(0) })
-    process.on("SIGINT", () => { cleanupPid(); process.exit(0) })
-  } catch {}
+  } catch (err) {
+    console.warn("[claude-monitor] failed to create PID file:", err)
+  }
 
   console.log(`[claude-monitor] server listening on http://127.0.0.1:${config.port}`)
   console.log(`[claude-monitor] ANTHROPIC_API_KEY: ${hasApiKey ? "present" : "not set — Haiku features disabled"}`)
