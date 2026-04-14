@@ -96,9 +96,8 @@ export function startServer() {
   })
 
   const cleanupPid = () => {
-    try { unlinkSync(PID_FILE) } catch (err) {
-      if (!(err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code === "ENOENT"))
-        console.warn("[claude-monitor] failed to remove PID file:", err)
+    try { unlinkSync(PID_FILE) } catch (err: any) {
+      if (err?.code !== "ENOENT") console.warn("[claude-monitor] failed to remove PID file:", err)
     }
   }
   process.on("exit", cleanupPid)
