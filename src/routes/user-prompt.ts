@@ -123,9 +123,9 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
   // Slash commands and short valid responses bypass ambiguity detection entirely
   if (isAllowlisted(prompt)) {
     db.query(
-      "INSERT INTO prompts (session_id, prompt_text, is_ambiguous) VALUES ($1, $2, $3)",
+      "INSERT INTO prompts (session_id, prompt_text, is_ambiguous) VALUES ($1, $2, $3) RETURNING id",
       [session_id ?? null, prompt.slice(0, 2000), false]
-    ).then(() => { if (session_id) markNewPrompt(session_id) }).catch(() => {})
+    ).then(({ rows }) => { if (session_id) markNewPrompt(session_id, rows[0]?.id) }).catch(() => {})
     return new Response("{}", { headers: { "Content-Type": "application/json" } })
   }
 
@@ -133,9 +133,9 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
 
   // Log every prompt — fire-and-forget
   db.query(
-    "INSERT INTO prompts (session_id, prompt_text, is_ambiguous) VALUES ($1, $2, $3)",
+    "INSERT INTO prompts (session_id, prompt_text, is_ambiguous) VALUES ($1, $2, $3) RETURNING id",
     [session_id ?? null, prompt.slice(0, 2000), ambiguous]
-  ).then(() => { if (session_id) markNewPrompt(session_id) }).catch(() => {})
+  ).then(({ rows }) => { if (session_id) markNewPrompt(session_id, rows[0]?.id) }).catch(() => {})
 
   if (!ambiguous) {
     return new Response("{}", { headers: { "Content-Type": "application/json" } })

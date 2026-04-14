@@ -5,7 +5,7 @@ export function extractTextFromContent(content: unknown): string {
   if (typeof content === "string") return content
   if (Array.isArray(content)) {
     return (content as ContentBlock[])
-      .filter(b => b.type === "text")
+      .filter(b => b != null && typeof b === "object" && b.type === "text")
       .map(b => b.text ?? "")
       .join("\n")
   }
