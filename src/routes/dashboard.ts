@@ -1,8 +1,12 @@
 import { db } from "../db"
 
-export async function handleDashboardKpis(url: URL): Promise<Response> {
+function parseDays(url: URL): number {
   const raw = parseInt(url.searchParams.get("days") ?? "7", 10)
-  const days = Math.min(90, Math.max(1, isNaN(raw) ? 7 : raw))
+  return Math.min(90, Math.max(1, isNaN(raw) ? 7 : raw))
+}
+
+export async function handleDashboardKpis(url: URL): Promise<Response> {
+  const days = parseDays(url)
   const { rows } = await db.query(
     `SELECT snapshot_date, total_sessions, estimated_cost_usd,
             cache_hit_rate, ambiguity_rate, total_tokens, total_output_tokens,
@@ -19,8 +23,7 @@ export async function handleDashboardKpis(url: URL): Promise<Response> {
 }
 
 export async function handleDashboardTools(url: URL): Promise<Response> {
-  const raw = parseInt(url.searchParams.get("days") ?? "7", 10)
-  const days = Math.min(90, Math.max(1, isNaN(raw) ? 7 : raw))
+  const days = parseDays(url)
   const { rows } = await db.query(
     `SELECT tool_name, COUNT(*) AS call_count,
             ROUND(AVG(duration_ms)) AS avg_duration_ms
@@ -37,8 +40,7 @@ export async function handleDashboardTools(url: URL): Promise<Response> {
 }
 
 export async function handleDashboardPrompts(url: URL): Promise<Response> {
-  const raw = parseInt(url.searchParams.get("days") ?? "7", 10)
-  const days = Math.min(90, Math.max(1, isNaN(raw) ? 7 : raw))
+  const days = parseDays(url)
   const { rows } = await db.query(
     `SELECT DATE(created_at) AS day,
             COUNT(*) AS total,
@@ -58,7 +60,7 @@ export async function handleDashboardPrompts(url: URL): Promise<Response> {
 }
 
 export async function handleDashboardSessions(url: URL): Promise<Response> {
-  const days = Math.min(90, Math.max(1, parseInt(url.searchParams.get("days") ?? "7")))
+  const days = parseDays(url)
   const { rows } = await db.query(
     `SELECT s.id,
             s.started_at,
@@ -85,7 +87,7 @@ export async function handleDashboardSessions(url: URL): Promise<Response> {
 }
 
 export async function handleDashboardHaikuCost(url: URL): Promise<Response> {
-  const days = Math.min(90, Math.max(1, parseInt(url.searchParams.get("days") ?? "7")))
+  const days = parseDays(url)
   const { rows } = await db.query(
     `SELECT
        DATE(created_at)                          AS day,

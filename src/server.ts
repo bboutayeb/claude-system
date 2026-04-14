@@ -98,7 +98,10 @@ export function startServer() {
   try {
     mkdirSync(MONITOR_DIR, { recursive: true })
     writeFileSync(PID_FILE, String(process.pid), "utf8")
-    process.on("exit", () => { try { unlinkSync(PID_FILE) } catch {} })
+    const cleanupPid = () => { try { unlinkSync(PID_FILE) } catch {} }
+    process.on("exit", cleanupPid)
+    process.on("SIGTERM", () => { cleanupPid(); process.exit(0) })
+    process.on("SIGINT", () => { cleanupPid(); process.exit(0) })
   } catch {}
 
   console.log(`[claude-monitor] server listening on http://127.0.0.1:${config.port}`)
