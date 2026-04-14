@@ -33,7 +33,7 @@ function loadConfig(): Config {
     }
   }
   return {
-    port: (() => { const p = parseInt(process.env.HOOKS_PORT ?? String(file.port ?? DEFAULTS.port), 10); return isNaN(p) ? DEFAULTS.port : Math.min(65535, Math.max(1, p)) })(),
+    port: (() => { const envPort = process.env.HOOKS_PORT !== undefined ? parseInt(process.env.HOOKS_PORT, 10) : NaN; const p = !isNaN(envPort) ? envPort : file.port ?? DEFAULTS.port; return Math.min(65535, Math.max(1, p)) })(),
     db_url: process.env.DATABASE_URL ?? file.db_url ?? DEFAULTS.db_url,
     anthropic_api_key: process.env.ANTHROPIC_API_KEY ?? file.anthropic_api_key ?? null,
     haiku_cost_alert_usd: file.haiku_cost_alert_usd ?? null,

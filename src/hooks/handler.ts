@@ -2,7 +2,7 @@
 // Covers 5 events: SessionStart, Stop, PreToolUse, PostToolUse, UserPromptSubmit.
 // Usage: claude-monitor hook <event-name>
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs"
+import { readFileSync, writeFileSync } from "fs"
 import { aggregateTranscriptTokens } from "./transcript"
 import { config, SERVER_URL, MONITOR_DIR } from "../config"
 import { homedir } from "os"
