@@ -36,7 +36,7 @@ Claude Code session
   ├─ PostToolUse       ──→ claude-monitor hook post-tool-use
   └─ Stop              ──→ claude-monitor hook session-stop
            │
-           │  fire-and-forget HTTP (< 1 ms)
+           │  fire-and-forget HTTP (< 1 ms) — sauf UserPromptSubmit (synchrone)
            ▼
   HTTP Server :18766  (Bun, auto-démarré au SessionStart)
            │
