@@ -152,6 +152,40 @@ Le projet `claude-monitor` est fonctionnel (hooks, dashboard, quality scorer, am
 
 ---
 
+### Étape 6 — Rebuild binaire + CI (moyen terme, ~30 min)
+
+**Problème :** Le binaire distribué était en `0.1.x`. Les étapes 1–5 ont ajouté plusieurs fonctionnalités significatives (quality scorer auto, dashboard sessions, métriques Haiku, feedback FP). Il fallait tagger une release `v0.2.0` propre avec un binaire compilé à jour.
+
+**Fichiers :** `src/config.ts`, `scripts/build.sh`, `.github/workflows/release.yml`
+
+**Changements :**
+1. Bumper `VERSION` dans `src/config.ts` → `"0.2.0"`
+2. Vérifier que `scripts/build.sh` produit les 3 binaires localement (linux-x64, darwin-arm64, darwin-x64)
+3. Tagger `v0.2.0` et pousser le tag → déclenche le workflow GitHub Actions
+4. Vérifier que la release GitHub contient les 3 binaires + `install.sh`
+5. Notes de release auto-générées par GitHub Actions depuis les PRs mergées
+
+**Workflow GitHub Actions (`.github/workflows/release.yml`) :**
+- Trigger : push de tag `v*`
+- Job `build` : Ubuntu-latest, setup Bun, `bun install --frozen-lockfile`, `bash scripts/build.sh`, upload artifacts `dist/claude-monitor-*`
+- Job `release` : télécharge artifacts, crée GitHub Release via `softprops/action-gh-release@v2` avec les 3 binaires + `scripts/install.sh` + release notes auto
+
+**Changelog v0.2.0 :**
+- Allowlist automatique des slash commands (`/compact`, `/help`, etc.)
+- Quality scoring automatique à la fin de chaque session (Haiku, fire-and-forget)
+- Dashboard : table sessions avec score moyen, ambiguïtés et lien transcript
+- Métriques de coût Haiku : tracking par source (ambiguity/scoring), alerte configurable
+- Feedback faux positifs : bouton dashboard → allowlist persistée en DB
+
+**Réalisation :**
+- ✅ `VERSION = "0.2.0"` dans `src/config.ts` (commit: `99dcab2`, 2026-04-14)
+- ✅ Tag `v0.2.0` créé et poussé → workflow GitHub Actions déclenché
+- ✅ Release GitHub publiée avec 3 binaires (linux-x64, darwin-arm64, darwin-x64) + `install.sh`
+- ✅ URL release : https://github.com/bboutayeb/claude-system/releases/tag/v0.2.0
+- ✅ `main` et `integ` synchronisés sur le même HEAD (`7fc81ec`, 2026-04-14)
+
+---
+
 ## PRESENT — Étape en cours
 
 → Voir `docs/plans/roadmap-current.md`
@@ -159,23 +193,6 @@ Le projet `claude-monitor` est fonctionnel (hooks, dashboard, quality scorer, am
 ---
 
 ## FUTURE — Étapes à venir
-
-### Étape 7 — Scoring temps réel (long terme, ~2h)
-
-**Problème :** Le scoring batch post-session ne donne pas de feedback immédiat pendant la session.
-
-**Approche : scoring par échange complet**
-
-Plutôt que de scorer chaque prompt isolément, le scoring temps réel évalue un **échange complet** = le prompt courant + le contexte des 2-3 messages précédents (prompt+réponse). Cela résout le cas des prompts courts comme "oui" ou "continue" qui n'ont pas de sens isolément mais sont parfaitement clairs dans leur contexte conversationnel.
-
-**Changements :**
-1. Dans `onPostToolUse()`, après chaque réponse assistant significative, déclencher un scoring léger fire-and-forget
-2. Le payload envoyé à Haiku inclut les **2-3 derniers échanges** (pas juste le dernier prompt), pour que le score reflète la qualité de l'interaction dans son contexte
-3. Cache en mémoire (Map `session→[dernierTimestamp, dernierScore]`) pour éviter de scorer chaque tool call intermédiaire — ne scorer que quand un nouvel échange utilisateur est détecté
-4. Throttle : max 1 scoring toutes les 30s par session pour contrôler les coûts
-5. **Perspective LLM local** : cette architecture (fire-and-forget, échange complet) est conçue pour être compatible avec un futur LLM local (Ollama, llama.cpp) qui remplacerait Haiku sans changer l'interface
-
----
 
 ### Étape 8 — Multi-projets (long terme, ~2h)
 
@@ -194,8 +211,10 @@ Plutôt que de scorer chaque prompt isolément, le scoring temps réel évalue u
 | Branche | Statut | Notes |
 |---------|--------|-------|
 | `main` | Stable (prod-ready) | Merges uniquement depuis `integ` (releases éprouvées) |
-| `integ` | Intégration | Étapes 1–5 mergées ✅ |
+| `integ` | Intégration | Étapes 1–6 mergées ✅ |
 | `feat/allowlist-short-prompts` | ✅ Merged | → `integ` 2026-04-13 |
 | `feat/quality-scorer-auto-stop` | ✅ Merged | → `integ` 2026-04-14 |
 | `feat/haiku-cost-metrics` | ✅ Merged | → `integ` 2026-04-14 |
 | `feat/feedback-false-positives` | ✅ Merged | → `integ` 2026-04-14 |
+| `feat/rebuild-binary-v0.2.0` | ✅ Merged | → `main` 2026-04-14 (tag v0.2.0) |
+| `feat/realtime-scoring` | 🔄 En cours | → `integ` (étape 7) |
