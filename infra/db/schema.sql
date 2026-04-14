@@ -1,5 +1,8 @@
 -- claude-monitor consolidated schema
 -- Idempotent: safe to run on an existing database (upgrades and fresh installs).
+--
+-- RÈGLE : toute migration dans infra/db/migrations/ DOIT aussi mettre à jour ce fichier
+-- pour maintenir le schéma à l'état final. Un fresh install utilise uniquement ce fichier.
 
 -- ── sessions ─────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS sessions (
