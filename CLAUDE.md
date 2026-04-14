@@ -57,6 +57,7 @@ built around Claude Code. Distributed as a single compiled binary (`claude-monit
 - Always `LIMIT 50` unless counting
 - Use `EXPLAIN ANALYZE` before optimizing queries
 - Connection string: `postgresql://claude:claude@localhost:5432/claude_system`
+- **Migrations** : toute migration dans `infra/db/migrations/` doit aussi mettre à jour `infra/db/schema.sql` (état final). `schema.sql` est la seule source de vérité pour les fresh installs.
 
 ## File Conventions
 
