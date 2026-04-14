@@ -48,7 +48,10 @@ function loadConfig(): Config {
     anthropic_api_key: process.env.ANTHROPIC_API_KEY ?? file.anthropic_api_key ?? null,
     haiku_cost_alert_usd: file.haiku_cost_alert_usd ?? null,
     realtime_scoring: file.realtime_scoring ?? DEFAULTS.realtime_scoring,
-    realtime_scoring_throttle_s: Math.max(1, file.realtime_scoring_throttle_s ?? DEFAULTS.realtime_scoring_throttle_s),
+    realtime_scoring_throttle_s: (() => {
+      const v = Number(file.realtime_scoring_throttle_s)
+      return Number.isFinite(v) && v >= 1 ? v : DEFAULTS.realtime_scoring_throttle_s
+    })(),
   }
 }
 
