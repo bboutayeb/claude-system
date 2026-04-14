@@ -115,11 +115,11 @@ Fichier créé par `install` : `~/.claude-monitor/config.json`
 
 Précédence : variable d'environnement > `config.json` > valeurs par défaut.
 
-| Variable d'env    | Équivalent config    | Défaut                                            |
-|-------------------|----------------------|---------------------------------------------------|
-| `HOOKS_PORT`      | `port`               | `18766`                                           |
-| `DATABASE_URL`    | `db_url`             | `postgresql://claude:claude@localhost:5432/...`   |
-| `ANTHROPIC_API_KEY` | `anthropic_api_key` | `null` (Haiku désactivé)                         |
+| Variable d'env      | Équivalent config    | Défaut                                            |
+|---------------------|----------------------|---------------------------------------------------|
+| `HOOKS_PORT`        | `port`               | `18766`                                           |
+| `DATABASE_URL`      | `db_url`             | `postgresql://claude:claude@localhost:5432/...`   |
+| `ANTHROPIC_API_KEY` | `anthropic_api_key`  | `null` (Haiku désactivé)                          |
 
 ---
 

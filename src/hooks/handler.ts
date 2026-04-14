@@ -1,5 +1,5 @@
 // Handles Claude Code lifecycle hook events.
-// Replaces the 4 shell scripts in hooks/.
+// Covers 5 events: SessionStart, Stop, PreToolUse, PostToolUse, UserPromptSubmit.
 // Usage: claude-monitor hook <event-name>
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs"
