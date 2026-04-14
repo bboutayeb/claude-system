@@ -35,10 +35,22 @@ CREATE TABLE IF NOT EXISTS ambiguities (
   tool_name TEXT,
   prompt_text TEXT NOT NULL,
   suggestion TEXT,
+  source TEXT,
+  false_positive BOOLEAN DEFAULT NULL,
   detected_at TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS ambiguities_session_idx ON ambiguities(session_id);
+
+-- ── haiku_usage ───────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS haiku_usage (
+  id            SERIAL PRIMARY KEY,
+  source        TEXT NOT NULL CHECK (source IN ('ambiguity', 'scoring', 'realtime-scoring')),
+  input_tokens  INT NOT NULL,
+  output_tokens INT NOT NULL,
+  cost_usd      NUMERIC(12, 8) NOT NULL,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- ── tasks ─────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS tasks (
