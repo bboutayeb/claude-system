@@ -89,6 +89,7 @@ export async function maybeScore(sessionId: string): Promise<void> {
   if (Date.now() - s.lastAttemptTs < throttleMs) return
 
   s.inFlight = true
+  const capturedPromptTs = s.lastPromptTs
   try {
     s.lastAttemptTs = Date.now()
 
@@ -121,14 +122,14 @@ export async function maybeScore(sessionId: string): Promise<void> {
       [score, promptId]
     )
 
-    s.lastScoreTs = Date.now()
+    s.lastScoreTs = capturedPromptTs
     const cost = calcHaikuCost(inputTokens, outputTokens)
     await db.query(
       "INSERT INTO haiku_usage (source, input_tokens, output_tokens, cost_usd) VALUES ($1, $2, $3, $4)",
       ["realtime-scoring", inputTokens, outputTokens, cost]
     )
     if ((updateResult.rowCount ?? 0) > 0) {
-      s.pendingPromptId = null
+      if (s.pendingPromptId === promptId) s.pendingPromptId = null
       console.log(`[realtime-scorer] session=${sessionId} score=${score}`)
     }
   } catch (err: unknown) {
