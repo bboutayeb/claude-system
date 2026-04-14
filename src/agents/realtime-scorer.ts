@@ -42,7 +42,7 @@ function extractRecentExchanges(lines: string[], count = 3): Exchange[] {
     const isAssistant = e?.message?.role === "assistant" || e?.type === "assistant"
     if (!isAssistant) continue
 
-    const responseText = extractTextFromContent(e.message?.content)
+    const responseText = extractTextFromContent(e.message?.content ?? e.content)
     if (!responseText) continue
 
     // Find preceding user message (skip tool_result entries)
