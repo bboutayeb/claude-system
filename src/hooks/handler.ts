@@ -32,6 +32,11 @@ async function isServerUp(): Promise<boolean> {
 async function ensureServerRunning(): Promise<void> {
   if (await isServerUp()) return
 
+  if (!process.execPath.includes("claude-monitor")) {
+    console.error("[hook] dev mode: server not running — start it manually: bun run src/cli.ts server")
+    return
+  }
+
   // Spawn self as server — detached so it survives hook process exit
   const proc = Bun.spawn([process.execPath, "server"], {
     cwd: MONITOR_DIR,
