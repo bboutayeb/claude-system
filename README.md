@@ -13,7 +13,7 @@ et KPIs via hooks, sans dépendance de runtime. Distribué comme un binaire comp
 
 - **Collecte silencieuse** : 5 hooks Claude Code (SessionStart, Stop, PreToolUse, PostToolUse,
   UserPromptSubmit) → requêtes HTTP fire-and-forget vers un serveur Bun persistant
-- **Latence nulle** : ~0,2 ms par hook (vs ~230 ms pour un process Bun à froid)
+- **Latence négligeable** : requête HTTP fire-and-forget ~0,2 ms (un process Bun démarré à froid coûte ~230 ms — le serveur persistant évite ce coût à chaque hook)
 - **Tokens & coût** : input/output/cache agrégés par session depuis les transcripts JSONL
 - **Durée des outils** : chronomètre in-memory PreToolUse → PostToolUse
 - **Détection d'ambiguïté** : prompts courts ou déictiques → clarification via Claude Haiku
@@ -71,7 +71,7 @@ L'installateur :
 > **Prérequis** : [Docker](https://docs.docker.com/get-docker/) et `ANTHROPIC_API_KEY` dans l'environnement.
 > **WSL2** : utiliser `localhost` (pas `127.0.0.1`) dans le navigateur Windows pour le dashboard.
 
-Ajouter le binaire au PATH (une seule fois) :
+Ajouter le binaire au PATH (une seule fois, exemple pour bash — adapter selon ton shell) :
 ```bash
 echo 'export PATH="$HOME/.claude-monitor/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 ```
@@ -109,6 +109,9 @@ Fichier créé par `install` : `~/.claude-monitor/config.json`
   "anthropic_api_key": null
 }
 ```
+
+> `anthropic_api_key: null` désactive Haiku (détection d'ambiguïté + quality scorer inactifs).
+> Pour les activer, remplacer `null` par ta clé API Anthropic (ou définir `ANTHROPIC_API_KEY` en variable d'environnement).
 
 Précédence : variable d'environnement > `config.json` > valeurs par défaut.
 
@@ -232,13 +235,9 @@ scripts/
 Ce projet est une implémentation directe des patterns documentés par
 **[Mathieu Grenier](https://mathieugrenier.fr)** dans sa série sur l'outillage d'agents IA :
 
-- **Serveur Bun HTTP persistant** — vs cold start ~230 ms par hook shell (×1 150 sur la latence p50)
+- **Serveur Bun HTTP persistant** — son audit de production (75 hooks, ~3,3–12,6 s de latence par Edit avec des scripts shell) l'a conduit à migrer vers un serveur HTTP persistant : 0,12–0,3 s après migration. Notre architecture adopte ce choix d'emblée.
 - **Token optimization** — règles `rg/Grep before Read`, `head -50`, `LIMIT 50 SQL`, `/compact`
-- **Prompt caching** — CLAUDE.md > 1 024 tokens → cache_control automatique (96 % hit rate mesuré)
+- **Prompt caching** — CLAUDE.md > 1 024 tokens → cache_control automatique (96 % hit rate mesuré dans son env)
 - **Observabilité à 4 couches** — collecte, persistance, consolidation (trigger KPI), visualisation
 - **Guardrails** — table tasks, trigger auto pending_review, vérificateur 5 types
 - **Détection d'ambiguïté** — heuristique longueur + LLM léger (Haiku ici, Qwen3 dans le blog)
-
-Le choix du serveur Bun persistant plutôt que des scripts shell est directement issu de
-son audit : 75 hooks accumulés, 3,3–12,6 s de latence par Edit, réduit à 0,12–0,3 s
-après migration HTTP.
