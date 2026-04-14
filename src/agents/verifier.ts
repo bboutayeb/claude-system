@@ -24,7 +24,7 @@ interface Task {
   id: number
   description: string
   status: string
-  acceptance_criteria: Criteria | null
+  acceptance_criteria: Criteria | Criteria[] | null
 }
 
 // ─── Verifiers ────────────────────────────────────────────────────────────────
@@ -95,10 +95,14 @@ async function runAll() {
       continue
     }
 
-    let ok = false
+    const criteriaList = Array.isArray(criteria) ? criteria : [criteria]
+    let ok = true
     try {
-      ok = await verifyCriteria(criteria)
+      for (const c of criteriaList) {
+        if (!await verifyCriteria(c)) { ok = false; break }
+      }
     } catch (err: unknown) {
+      ok = false
       const error = err as Error
       console.error(`  [ERROR] #${task.id} — ${error.message}`)
     }

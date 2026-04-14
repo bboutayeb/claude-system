@@ -56,6 +56,8 @@ export function startServer() {
             return handleDashboardHaikuCost(url)
           case "/dashboard/ambiguities":
             return handleAmbiguityList(url)
+          default:
+            return new Response("not found", { status: 404 })
         }
       }
 
@@ -64,7 +66,7 @@ export function startServer() {
       }
 
       if (req.method !== "POST") {
-        return new Response("method not allowed", { status: 405 })
+        return new Response("not found", { status: 404 })
       }
 
       const body = await parseBody(req)
