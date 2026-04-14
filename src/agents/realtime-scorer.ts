@@ -9,7 +9,9 @@ import { extractTextFromContent } from "../lib/transcript"
 
 interface SessionState {
   lastPromptTs: number
-  lastScoreTs: number
+  lastScoreTs: number   // updated only on successful score — guards "new prompt since last score"
+  lastAttemptTs: number // updated on every attempt — drives the throttle
+  pendingPromptId: number | null
   transcriptPath: string | null
   inFlight: boolean
 }
@@ -62,12 +64,13 @@ function extractRecentExchanges(lines: string[], count = 3): Exchange[] {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export function markNewPrompt(sessionId: string): void {
+export function markNewPrompt(sessionId: string, promptId: number): void {
   const s = sessions.get(sessionId)
   if (s) {
     s.lastPromptTs = Date.now()
+    s.pendingPromptId = promptId
   } else {
-    sessions.set(sessionId, { lastPromptTs: Date.now(), lastScoreTs: 0, transcriptPath: null, inFlight: false })
+    sessions.set(sessionId, { lastPromptTs: Date.now(), lastScoreTs: 0, lastAttemptTs: 0, pendingPromptId: promptId, transcriptPath: null, inFlight: false })
   }
 }
 
@@ -83,10 +86,12 @@ export async function maybeScore(sessionId: string): Promise<void> {
   if (s.inFlight) return
 
   const throttleMs = config.realtime_scoring_throttle_s * 1000
-  if (Date.now() - s.lastScoreTs < throttleMs) return
+  if (Date.now() - s.lastAttemptTs < throttleMs) return
 
   s.inFlight = true
   try {
+    s.lastAttemptTs = Date.now()
+
     if (!s.transcriptPath) {
       const { rows } = await db.query(
         "SELECT transcript_path FROM sessions WHERE id = $1",
@@ -95,6 +100,9 @@ export async function maybeScore(sessionId: string): Promise<void> {
       s.transcriptPath = rows[0]?.transcript_path ?? null
       if (!s.transcriptPath) return
     }
+
+    const promptId = s.pendingPromptId
+    if (!promptId) return
 
     const file = Bun.file(s.transcriptPath)
     if (!await file.exists()) return
@@ -105,16 +113,13 @@ export async function maybeScore(sessionId: string): Promise<void> {
     const exchanges = extractRecentExchanges(lines, 3)
     if (exchanges.length === 0) return
 
-    const { rows: targets } = await db.query(
-      "SELECT id FROM prompts WHERE session_id = $1 AND quality_score IS NULL ORDER BY created_at DESC LIMIT 1",
-      [sessionId]
-    )
-    if (targets.length === 0) { s.lastScoreTs = Date.now(); return }
-
     const last = exchanges[exchanges.length - 1]
     const { score, inputTokens, outputTokens } = await scoreExchange(api, last.prompt, last.response)
 
-    await db.query("UPDATE prompts SET quality_score = $1 WHERE id = $2", [score, targets[0].id])
+    const updateResult = await db.query(
+      "UPDATE prompts SET quality_score = $1 WHERE id = $2 AND quality_score IS NULL",
+      [score, promptId]
+    )
 
     s.lastScoreTs = Date.now()
     const cost = calcHaikuCost(inputTokens, outputTokens)
@@ -122,7 +127,10 @@ export async function maybeScore(sessionId: string): Promise<void> {
       "INSERT INTO haiku_usage (source, input_tokens, output_tokens, cost_usd) VALUES ($1, $2, $3, $4)",
       ["realtime-scoring", inputTokens, outputTokens, cost]
     )
-    console.log(`[realtime-scorer] session=${sessionId} score=${score}`)
+    if ((updateResult.rowCount ?? 0) > 0) {
+      s.pendingPromptId = null
+      console.log(`[realtime-scorer] session=${sessionId} score=${score}`)
+    }
   } catch (err: unknown) {
     console.error(`[realtime-scorer] error: ${(err as Error).message}`)
   } finally {
