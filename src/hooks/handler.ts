@@ -4,7 +4,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs"
 import { aggregateTranscriptTokens } from "./transcript"
-import { config, SERVER_URL, MONITOR_DIR, PID_FILE } from "../config"
+import { config, SERVER_URL, MONITOR_DIR } from "../config"
 import { homedir } from "os"
 
 async function readStdin(): Promise<unknown> {
