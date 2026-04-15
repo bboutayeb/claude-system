@@ -69,17 +69,25 @@ export async function handleDashboardSessions(url: URL): Promise<Response> {
             s.model,
             s.project,
             s.transcript_path,
-            COUNT(DISTINCT p.id)                                             AS prompt_count,
-            ROUND(AVG(p.quality_score), 2)                                   AS avg_quality,
-            COUNT(DISTINCT a.id)                                             AS ambiguity_count,
-            COUNT(DISTINCT a.id) FILTER (WHERE a.source = 'ia')             AS ambiguity_ia,
-            COUNT(DISTINCT a.id) FILTER (WHERE a.source = 'heuristique')    AS ambiguity_heuristique
+            p_agg.prompt_count,
+            p_agg.avg_quality,
+            a_agg.ambiguity_count,
+            a_agg.ambiguity_ia,
+            a_agg.ambiguity_heuristique
      FROM sessions s
-     LEFT JOIN prompts p ON p.session_id = s.id
-     LEFT JOIN ambiguities a ON a.session_id = s.id
+     LEFT JOIN LATERAL (
+       SELECT COUNT(*)                        AS prompt_count,
+              ROUND(AVG(quality_score), 2)    AS avg_quality
+       FROM prompts WHERE session_id = s.id
+     ) p_agg ON true
+     LEFT JOIN LATERAL (
+       SELECT COUNT(*)                                            AS ambiguity_count,
+              COUNT(*) FILTER (WHERE source = 'ia')              AS ambiguity_ia,
+              COUNT(*) FILTER (WHERE source = 'heuristique')     AS ambiguity_heuristique
+       FROM ambiguities WHERE session_id = s.id
+     ) a_agg ON true
      WHERE s.started_at >= CURRENT_DATE - $1::int
        AND ($2::text IS NULL OR s.project = $2)
-     GROUP BY s.id, s.started_at, s.ended_at, s.model, s.project, s.transcript_path
      ORDER BY s.started_at DESC
      LIMIT 50`,
     [days, project]

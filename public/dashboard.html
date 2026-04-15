@@ -260,7 +260,8 @@
     function fmt(n) { return n == null ? '—' : Number(n).toLocaleString('fr-FR') }
     function fmtUsd(n) { return n == null ? '—' : '$' + parseFloat(n).toFixed(4) }
     function fmtPct(n) { return n == null ? '—' : parseFloat(n).toFixed(1) + '%' }
-    function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML }
+    function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML }
+    function escAttr(s) { return escHtml(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;') }
 
     function makeOrUpdate(id, config) {
       if (charts[id]) {
@@ -281,22 +282,32 @@
     }
 
     async function loadProjects() {
-      const res = await fetch('/dashboard/projects')
-      const { projects } = await res.json()
       const sel = document.getElementById('project-filter')
       sel.replaceChildren()
       const defaultOption = document.createElement('option')
       defaultOption.value = ''
       defaultOption.textContent = 'Tous les projets'
       sel.appendChild(defaultOption)
-      projects.forEach(p => {
-        const option = document.createElement('option')
-        option.value = p
-        option.textContent = p
-        sel.appendChild(option)
-      })
-      const saved = sessionStorage.getItem('selectedProject') || ''
-      if (projects.includes(saved)) sel.value = saved
+
+      try {
+        const res = await fetch('/dashboard/projects')
+        if (!res.ok) return
+
+        const data = await res.json()
+        const projects = Array.isArray(data.projects) ? data.projects : []
+
+        projects.forEach(p => {
+          const option = document.createElement('option')
+          option.value = p
+          option.textContent = p
+          sel.appendChild(option)
+        })
+
+        const saved = sessionStorage.getItem('selectedProject') || ''
+        if (projects.includes(saved)) sel.value = saved
+      } catch (_) {
+        // Keep the default "Tous les projets" option if the request fails
+      }
     }
 
     async function load(days) {
@@ -477,15 +488,17 @@
         ? '<tr><td colspan="5" style="color:#475569;text-align:center">Aucune ambiguïté sur la période</td></tr>'
         : ambiguities.map(a => {
             const date = new Date(a.detected_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
-            const prompt = a.prompt_text.length > 80 ? a.prompt_text.slice(0, 80) + '…' : a.prompt_text
-            const suggestion = (a.suggestion || '').length > 60 ? a.suggestion.slice(0, 60) + '…' : (a.suggestion || '—')
+            const rawPrompt = a.prompt_text || ''
+            const prompt = escHtml(rawPrompt.length > 80 ? rawPrompt.slice(0, 80) + '…' : rawPrompt)
+            const rawSugg = a.suggestion || ''
+            const suggestion = escHtml(rawSugg.length > 60 ? rawSugg.slice(0, 60) + '…' : (rawSugg || '—'))
             const isFp = a.false_positive === true
             return `<tr>
               <td>${date}</td>
-              <td>${a.source || '—'}</td>
-              <td title="${a.prompt_text.replace(/"/g, '&quot;')}">${prompt}</td>
+              <td>${escHtml(a.source || '—')}</td>
+              <td title="${escAttr(a.prompt_text)}">${prompt}</td>
               <td>${suggestion}</td>
-              <td><button class="btn-fp${isFp ? ' active' : ''}" onclick="toggleFp(${a.id})">${isFp ? 'Faux positif ✓' : 'Marquer FP'}</button></td>
+              <td><button class="btn-fp${isFp ? ' active' : ''}" onclick="toggleFp(${parseInt(a.id)})">${isFp ? 'Faux positif ✓' : 'Marquer FP'}</button></td>
             </tr>`
           }).join('')
 
@@ -530,7 +543,7 @@
       sessionStorage.setItem('selectedProject', e.target.value)
       load(document.getElementById('days').value)
     })
-    loadProjects().then(() => load(7))
+    loadProjects().finally(() => load(7))
   </script>
 </body>
 </html>

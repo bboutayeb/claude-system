@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   project TEXT
 );
 
+CREATE INDEX IF NOT EXISTS idx_sessions_project_started_at
+  ON sessions (project, started_at DESC)
+  WHERE project IS NOT NULL;
+
 -- ── tool_calls ────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS tool_calls (
   id SERIAL PRIMARY KEY,
