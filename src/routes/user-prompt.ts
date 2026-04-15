@@ -18,6 +18,11 @@ const AMBIGUITY_TRIGGERS = [
 const FALLBACK_REASON =
   "Votre prompt semble ambigu. Pourriez-vous préciser ce que vous souhaitez faire ?"
 
+// Only scan the instruction prefix — pasted context/assistant text follows later
+const AMBIGUITY_SCAN_LENGTH = 500
+// Haiku only needs the instruction to judge intent — caps latency and cost
+const HAIKU_PROMPT_LENGTH = 800
+
 // Slash commands (/compact, /help, /clear, etc.) must never be blocked
 const SLASH_COMMAND_RE = /^\/\w+/
 
@@ -40,10 +45,13 @@ function isAllowlisted(text: string): boolean {
 }
 
 function isAmbiguous(text: string): boolean {
-  const len = text.trim().length
+  const trimmed = text.trim()
+  const len = trimmed.length
   // Very short: always ambiguous
   if (len < 10) return true
-  const matches = AMBIGUITY_TRIGGERS.filter((r) => r.test(text)).length
+  // Only scan the instruction prefix — pasted assistant text pollutes the full text
+  const scanText = trimmed.slice(0, AMBIGUITY_SCAN_LENGTH)
+  const matches = AMBIGUITY_TRIGGERS.filter((r) => r.test(scanText)).length
   // Medium length: one trigger is enough
   if (len < 40) return matches >= 1
   // Long prompt: require at least two independent signals
@@ -55,12 +63,20 @@ type SuggestionResult =
   | { status: "clear" }                   // Haiku says prompt is clear
   | { status: "unavailable" }             // timeout, error, or no API key
 
-async function getSuggestion(text: string): Promise<SuggestionResult> {
-  if (!config.anthropic_api_key) return { status: "unavailable" }
+// Persistent client — avoids cold HTTPS connection on every hook call
+let haikuClient: Anthropic | null = null
+function getHaikuClient(): Anthropic | null {
+  if (!config.anthropic_api_key) return null
+  if (!haikuClient) haikuClient = new Anthropic({ apiKey: config.anthropic_api_key })
+  return haikuClient
+}
 
-  const client = new Anthropic({ apiKey: config.anthropic_api_key })
+async function getSuggestion(text: string): Promise<SuggestionResult> {
+  const client = getHaikuClient()
+  if (!client) return { status: "unavailable" }
+
   const abort = new AbortController()
-  const timer = setTimeout(() => abort.abort(), 1200)
+  const timer = setTimeout(() => abort.abort(), 3000)
 
   try {
     const result = await client.messages.create(
@@ -69,7 +85,7 @@ async function getSuggestion(text: string): Promise<SuggestionResult> {
         max_tokens: 80,
         system:
           "You detect ambiguous prompts. Respond with ONE short clarifying question (max 20 words). Respond in the same language as the input. If the text is already clear and specific, respond with an empty string.",
-        messages: [{ role: "user", content: text }],
+        messages: [{ role: "user", content: text.slice(0, HAIKU_PROMPT_LENGTH) }],
       },
       { signal: abort.signal }
     )
