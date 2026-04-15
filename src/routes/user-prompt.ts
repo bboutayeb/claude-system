@@ -45,15 +45,13 @@ function isAllowlisted(text: string): boolean {
 }
 
 function isAmbiguous(text: string): boolean {
-  const trimmed = text.trim()
-  const len = trimmed.length
+  const scanText = text.trim().slice(0, AMBIGUITY_SCAN_LENGTH)
+  const scanLen = scanText.length
   // Very short: always ambiguous
-  if (len < 10) return true
-  // Only scan the instruction prefix — pasted assistant text pollutes the full text
-  const scanText = trimmed.slice(0, AMBIGUITY_SCAN_LENGTH)
+  if (scanLen < 10) return true
   const matches = AMBIGUITY_TRIGGERS.filter((r) => r.test(scanText)).length
   // Medium length: one trigger is enough
-  if (len < 40) return matches >= 1
+  if (scanLen < 40) return matches >= 1
   // Long prompt: require at least two independent signals
   return matches >= 2
 }

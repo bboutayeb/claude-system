@@ -521,20 +521,38 @@
 
       // Project stats card
       const psSection = document.getElementById('project-stats-section')
+      const resetProjectStatsCard = () => {
+        document.getElementById('project-stats-label').textContent = 'Projet : —'
+        document.getElementById('ps-sessions').textContent = '—'
+        document.getElementById('ps-prompts').textContent = '—'
+        document.getElementById('ps-quality').textContent = '—'
+        document.getElementById('ps-ambiguities').textContent = '—'
+        psSection.style.display = 'none'
+      }
       const currentProject = document.getElementById('project-filter').value
       if (currentProject) {
-        const psRes = await fetch(`/dashboard/project-stats?project=${encodeURIComponent(currentProject)}&days=${days}`)
-        const { stats } = await psRes.json()
-        if (stats) {
-          document.getElementById('project-stats-label').textContent = `Projet : ${currentProject}`
-          document.getElementById('ps-sessions').textContent = fmt(stats.total_sessions)
-          document.getElementById('ps-prompts').textContent = fmt(stats.total_prompts)
-          document.getElementById('ps-quality').textContent = stats.avg_quality != null ? parseFloat(stats.avg_quality).toFixed(1) + ' /10' : '—'
-          document.getElementById('ps-ambiguities').textContent = fmt(stats.total_ambiguities)
-          psSection.style.display = ''
+        try {
+          const psRes = await fetch(`/dashboard/project-stats?project=${encodeURIComponent(currentProject)}&days=${days}`)
+          if (!psRes.ok) {
+            resetProjectStatsCard()
+          } else {
+            const { stats } = await psRes.json()
+            if (stats) {
+              document.getElementById('project-stats-label').textContent = `Projet : ${currentProject}`
+              document.getElementById('ps-sessions').textContent = fmt(stats.total_sessions)
+              document.getElementById('ps-prompts').textContent = fmt(stats.total_prompts)
+              document.getElementById('ps-quality').textContent = stats.avg_quality != null ? parseFloat(stats.avg_quality).toFixed(1) + ' /10' : '—'
+              document.getElementById('ps-ambiguities').textContent = fmt(stats.total_ambiguities)
+              psSection.style.display = ''
+            } else {
+              resetProjectStatsCard()
+            }
+          }
+        } catch (_) {
+          resetProjectStatsCard()
         }
       } else {
-        psSection.style.display = 'none'
+        resetProjectStatsCard()
       }
     }
 
