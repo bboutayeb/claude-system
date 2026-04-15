@@ -260,6 +260,7 @@
     function fmt(n) { return n == null ? '—' : Number(n).toLocaleString('fr-FR') }
     function fmtUsd(n) { return n == null ? '—' : '$' + parseFloat(n).toFixed(4) }
     function fmtPct(n) { return n == null ? '—' : parseFloat(n).toFixed(1) + '%' }
+    function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML }
 
     function makeOrUpdate(id, config) {
       if (charts[id]) {
@@ -283,8 +284,17 @@
       const res = await fetch('/dashboard/projects')
       const { projects } = await res.json()
       const sel = document.getElementById('project-filter')
-      sel.innerHTML = '<option value="">Tous les projets</option>'
-        + projects.map(p => `<option value="${p}">${p}</option>`).join('')
+      sel.replaceChildren()
+      const defaultOption = document.createElement('option')
+      defaultOption.value = ''
+      defaultOption.textContent = 'Tous les projets'
+      sel.appendChild(defaultOption)
+      projects.forEach(p => {
+        const option = document.createElement('option')
+        option.value = p
+        option.textContent = p
+        sel.appendChild(option)
+      })
       const saved = sessionStorage.getItem('selectedProject') || ''
       if (projects.includes(saved)) sel.value = saved
     }
@@ -483,8 +493,8 @@
       const tbody = document.getElementById('sessions-tbody')
       tbody.innerHTML = sessions.map(s => {
         const date = new Date(s.started_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
-        const proj = s.project || '—'
-        const model = s.model ? s.model.split('-').slice(-2).join('-') : '—'
+        const proj = escHtml(s.project || '—')
+        const model = escHtml(s.model ? s.model.split('-').slice(-2).join('-') : '—')
         const score = s.avg_quality != null ? parseFloat(s.avg_quality).toFixed(1) + ' /10' : '—'
         const ambigus = parseInt(s.ambiguity_count) || 0
         const iaCount = parseInt(s.ambiguity_ia) || 0

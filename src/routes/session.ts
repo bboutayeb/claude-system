@@ -13,7 +13,8 @@ export async function handleSessionStart(body: unknown): Promise<Response> {
   }
   if (!session_id) return new Response("missing session_id", { status: 400 })
 
-  const project = cwd ? (basename(cwd) || null) : null
+  const rawBase = typeof cwd === "string" ? basename(cwd) : null
+  const project = rawBase && rawBase !== "/" ? rawBase : null
 
   await db.query(
     `INSERT INTO sessions (id, model, source, agent_type, transcript_path, cwd, project)
