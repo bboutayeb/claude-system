@@ -13,7 +13,8 @@ export async function handleSessionStart(body: unknown): Promise<Response> {
   }
   if (!session_id) return new Response("missing session_id", { status: 400 })
 
-  const rawBase = typeof cwd === "string" ? basename(cwd) : null
+  const cwdText = typeof cwd === "string" ? cwd : null
+  const rawBase = cwdText ? basename(cwdText) : null
   const project = rawBase && rawBase !== "/" ? rawBase : null
 
   await db.query(
@@ -26,7 +27,7 @@ export async function handleSessionStart(body: unknown): Promise<Response> {
        transcript_path = COALESCE(EXCLUDED.transcript_path, sessions.transcript_path),
        cwd             = COALESCE(EXCLUDED.cwd, sessions.cwd),
        project         = COALESCE(EXCLUDED.project, sessions.project)`,
-    [session_id, model ?? null, source ?? null, agent_type ?? null, transcript_path ?? null, cwd ?? null, project]
+    [session_id, model ?? null, source ?? null, agent_type ?? null, transcript_path ?? null, cwdText, project]
   )
   console.log(`[session] started: ${session_id} model=${model} project=${project ?? '—'} source=${source}`)
   return new Response("ok")

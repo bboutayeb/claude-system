@@ -111,18 +111,41 @@ export async function handleDashboardProjectStats(url: URL): Promise<Response> {
     })
   }
   const { rows } = await db.query(
-    `SELECT
-       COUNT(DISTINCT s.id)                    AS total_sessions,
-       COALESCE(SUM(s.input_tokens), 0)        AS total_input_tokens,
-       COALESCE(SUM(s.output_tokens), 0)       AS total_output_tokens,
-       ROUND(AVG(p.quality_score), 2)          AS avg_quality,
-       COUNT(DISTINCT p.id)                    AS total_prompts,
-       COUNT(DISTINCT a.id)                    AS total_ambiguities
-     FROM sessions s
-     LEFT JOIN prompts p ON p.session_id = s.id
-     LEFT JOIN ambiguities a ON a.session_id = s.id
-     WHERE s.project = $1
-       AND s.started_at >= CURRENT_DATE - $2::int`,
+    `WITH filtered_sessions AS (
+       SELECT s.id, s.input_tokens, s.output_tokens
+       FROM sessions s
+       WHERE s.project = $1
+         AND s.started_at >= CURRENT_DATE - $2::int
+     ),
+     session_stats AS (
+       SELECT
+         COUNT(*)                        AS total_sessions,
+         COALESCE(SUM(input_tokens), 0)  AS total_input_tokens,
+         COALESCE(SUM(output_tokens), 0) AS total_output_tokens
+       FROM filtered_sessions
+     ),
+     prompt_stats AS (
+       SELECT
+         ROUND(AVG(p.quality_score), 2)  AS avg_quality,
+         COUNT(p.id)                     AS total_prompts
+       FROM filtered_sessions fs
+       LEFT JOIN prompts p ON p.session_id = fs.id
+     ),
+     ambiguity_stats AS (
+       SELECT COUNT(a.id) AS total_ambiguities
+       FROM filtered_sessions fs
+       LEFT JOIN ambiguities a ON a.session_id = fs.id
+     )
+     SELECT
+       ss.total_sessions,
+       ss.total_input_tokens,
+       ss.total_output_tokens,
+       ps.avg_quality,
+       ps.total_prompts,
+       aps.total_ambiguities
+     FROM session_stats ss
+     CROSS JOIN prompt_stats ps
+     CROSS JOIN ambiguity_stats aps`,
     [project, days]
   )
   return new Response(JSON.stringify({ stats: rows[0] ?? null }), {
