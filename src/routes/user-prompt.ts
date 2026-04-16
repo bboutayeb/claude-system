@@ -5,18 +5,24 @@ import { calcHaikuCost } from "../lib/haiku-usage"
 import { markNewPrompt } from "../agents/realtime-scorer"
 
 const AMBIGUITY_TRIGGERS = [
-  // English deictic references
-  /\b(this|that|it|them|those|these)\b/i,
-  /\b(redo|undo|revert|retry)\b/i,
-  /\bthe (recommendations?|suggestions?|changes?)\b/i,
-  // French deictic references + ambiguous verbs
+  // EN: action verbs implying redo/undo without an explicit target
+  /\b(redo|undo|revert)\b/i,
+  // FR: deictic references + ambiguous verbs
   /\b(refaire|relancer|annuler|recommencer|implémenter)\b/i,
   /\b(ça|ceci|cela)\b/i,
   /\bles? (recommandations?|suggestions?|changements?|modifications?)\b/i,
 ]
 
-const FALLBACK_REASON =
+const FALLBACK_REASON_FR =
   "Votre prompt semble ambigu. Pourriez-vous préciser ce que vous souhaitez faire ?"
+const FALLBACK_REASON_EN =
+  "Your prompt seems ambiguous. Could you clarify what you'd like to do?"
+
+function getFallbackReason(text: string): string {
+  return /[àâéèêëïîôùûüç]|\b(le|la|les|un|une|des|du|je|tu|il|nous|vous|ils)\b/i.test(text)
+    ? FALLBACK_REASON_FR
+    : FALLBACK_REASON_EN
+}
 
 // Only scan the instruction prefix — pasted context/assistant text follows later
 const AMBIGUITY_SCAN_LENGTH = 500
@@ -45,15 +51,11 @@ function isAllowlisted(text: string): boolean {
 }
 
 function isAmbiguous(text: string): boolean {
-  const scanText = text.trim().slice(0, AMBIGUITY_SCAN_LENGTH)
-  const scanLen = scanText.length
-  // Very short: always ambiguous
-  if (scanLen < 10) return true
-  const matches = AMBIGUITY_TRIGGERS.filter((r) => r.test(scanText)).length
-  // Medium length: one trigger is enough
-  if (scanLen < 40) return matches >= 1
-  // Long prompt: require at least two independent signals
-  return matches >= 2
+  const trimmed = text.trim()
+  // Short prompt: always ambiguous regardless of content (aligned with article: < 30 chars)
+  if (trimmed.length < 30) return true
+  // Longer prompt: only flag on explicit ambiguous keywords
+  return AMBIGUITY_TRIGGERS.some((r) => r.test(trimmed.slice(0, AMBIGUITY_SCAN_LENGTH)))
 }
 
 type SuggestionResult =
@@ -69,9 +71,24 @@ function getHaikuClient(): Anthropic | null {
   return haikuClient
 }
 
-async function getSuggestion(text: string): Promise<SuggestionResult> {
+async function getSuggestion(text: string, sessionId: string | null): Promise<SuggestionResult> {
   const client = getHaikuClient()
   if (!client) return { status: "unavailable" }
+
+  // Enrich context with the last clear prompt from this session (like the article's RAG step)
+  let content = text.slice(0, HAIKU_PROMPT_LENGTH)
+  if (sessionId) {
+    try {
+      const { rows } = await db.query(
+        "SELECT prompt_text FROM prompts WHERE session_id = $1 AND NOT is_ambiguous ORDER BY created_at DESC LIMIT 1",
+        [sessionId]
+      )
+      if (rows[0]?.prompt_text) {
+        const prev = (rows[0].prompt_text as string).slice(0, 400)
+        content = `Previous clear prompt: ${prev}\n\nCurrent prompt: ${text.slice(0, HAIKU_PROMPT_LENGTH - prev.length - 50)}`
+      }
+    } catch { /* fail open — use original text */ }
+  }
 
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), 3000)
@@ -83,7 +100,7 @@ async function getSuggestion(text: string): Promise<SuggestionResult> {
         max_tokens: 80,
         system:
           "You detect ambiguous prompts. Respond with ONE short clarifying question (max 20 words). Respond in the same language as the input. If the text is already clear and specific, respond with an empty string.",
-        messages: [{ role: "user", content: text.slice(0, HAIKU_PROMPT_LENGTH) }],
+        messages: [{ role: "user", content }],
       },
       { signal: abort.signal }
     )
@@ -155,7 +172,7 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
     return new Response("{}", { headers: { "Content-Type": "application/json" } })
   }
 
-  const suggestion = await getSuggestion(prompt)
+  const suggestion = await getSuggestion(prompt, session_id ?? null)
 
   // Haiku explicitly says clear → trust it regardless of length
   if (suggestion.status === "clear") {
@@ -164,7 +181,7 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
 
   const reason = suggestion.status === "question"
     ? `[IA] ${suggestion.text}`
-    : `[heuristique] ${FALLBACK_REASON}`
+    : `[heuristique] ${getFallbackReason(prompt)}`
 
   const source = suggestion.status === "question" ? "ia" : "heuristique"
 
