@@ -95,6 +95,7 @@ export async function maybeScore(sessionId: string): Promise<void> {
     if (!promptId) return
 
     const file = Bun.file(s.transcriptPath)
+    if (!await file.exists()) return
     const tailBytes = 64 * 1024
     const text = await file.slice(Math.max(0, file.size - tailBytes), file.size).text()
     const lines = text.split("\n")

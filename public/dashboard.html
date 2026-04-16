@@ -509,7 +509,7 @@
               <td>${escHtml(a.source || '—')}</td>
               <td title="${escAttr(a.prompt_text)}">${prompt}</td>
               <td>${suggestion}</td>
-              <td><button class="btn-fp${isFp ? ' active' : ''}" onclick="toggleFp(${parseInt(a.id)})">${isFp ? 'Faux positif ✓' : 'Marquer FP'}</button></td>
+              <td><button class="btn-fp${isFp ? ' active' : ''}" onclick="toggleFp(${parseInt(a.id, 10)})">${isFp ? 'Faux positif ✓' : 'Marquer FP'}</button></td>
             </tr>`
           }).join('')
 
