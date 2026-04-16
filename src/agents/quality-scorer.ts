@@ -1,3 +1,4 @@
+import type Anthropic from "@anthropic-ai/sdk"
 import { Pool } from "pg"
 import { config } from "../config"
 import { calcHaikuCost } from "../lib/haiku-usage"
