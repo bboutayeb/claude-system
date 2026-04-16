@@ -100,8 +100,11 @@ CREATE TABLE IF NOT EXISTS prompts (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS prompts_session_idx ON prompts(session_id);
-CREATE INDEX IF NOT EXISTS prompts_created_idx ON prompts(created_at);
+CREATE INDEX IF NOT EXISTS prompts_session_idx      ON prompts(session_id);
+CREATE INDEX IF NOT EXISTS prompts_created_idx     ON prompts(created_at);
+CREATE INDEX IF NOT EXISTS prompts_session_clear_idx
+  ON prompts (session_id, created_at DESC)
+  WHERE is_ambiguous = false;
 
 -- ── kpi_snapshots ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS kpi_snapshots (
