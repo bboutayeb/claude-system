@@ -25,7 +25,7 @@ interface Exchange { prompt: string; response: string }
 function extractLastExchange(lines: string[]): Exchange | null {
   const entries = parseJSONLLines(lines)
 
-  // Scan backward — parse lazily so we stop as soon as we have one exchange
+  // Scan backward through all parsed entries, stop at first complete exchange
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i] as Record<string, unknown>
     const isAssistant = (e?.message as Record<string, unknown>)?.role === "assistant" || e?.type === "assistant"

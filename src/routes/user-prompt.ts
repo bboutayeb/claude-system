@@ -71,12 +71,13 @@ async function getSuggestion(text: string, sessionId: string | null): Promise<Su
   let content = text.slice(0, HAIKU_PROMPT_LENGTH)
   if (sessionId) {
     try {
+      let tid: ReturnType<typeof setTimeout>
       const result = await Promise.race([
         db.query(
           "SELECT prompt_text FROM prompts WHERE session_id = $1 AND NOT is_ambiguous ORDER BY created_at DESC LIMIT 1",
           [sessionId]
-        ),
-        new Promise<null>(r => setTimeout(() => r(null), 100)),
+        ).finally(() => clearTimeout(tid)),
+        new Promise<null>(r => { tid = setTimeout(() => r(null), 100) }),
       ])
       const row = result && "rows" in result ? result.rows[0] : null
       if (row?.prompt_text) {

@@ -1,8 +1,8 @@
 import { Pool } from "pg"
-import Anthropic from "@anthropic-ai/sdk"
 import { config } from "../config"
 import { calcHaikuCost } from "../lib/haiku-usage"
-import { extractTextFromContent } from "../lib/transcript"
+import { parseJSONLLines, extractTextFromContent } from "../lib/transcript"
+import { getAnthropicClient } from "../lib/anthropic-client"
 
 interface PromptRow {
   id: number
@@ -14,10 +14,7 @@ interface PromptRow {
 // ─── Transcript parsing ───────────────────────────────────────────────────────
 
 function findAssistantResponse(lines: string[], promptText: string): string | null {
-  const entries = lines
-    .filter(l => l.trim())
-    .map(l => { try { return JSON.parse(l) } catch { return null } })
-    .filter(Boolean)
+  const entries = parseJSONLLines(lines) as any[]
 
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i]
@@ -130,13 +127,13 @@ async function scorePrompts(
 // ─── Exported functions ───────────────────────────────────────────────────────
 
 export async function scoreSession(sessionId: string, maxPrompts = 50): Promise<void> {
-  if (!config.anthropic_api_key) {
+  const client = getAnthropicClient()
+  if (!client) {
     console.log("[quality-scorer] ANTHROPIC_API_KEY not set — skipping")
     return
   }
 
   const pool = new Pool({ connectionString: config.db_url })
-  const client = new Anthropic({ apiKey: config.anthropic_api_key })
 
   try {
     const { rows: prompts } = await pool.query<PromptRow>(
@@ -165,13 +162,13 @@ export async function scoreSession(sessionId: string, maxPrompts = 50): Promise<
 }
 
 export async function runAll(maxPrompts = 20): Promise<void> {
-  if (!config.anthropic_api_key) {
+  const client = getAnthropicClient()
+  if (!client) {
     console.log("[quality-scorer] ANTHROPIC_API_KEY not set — skipping")
     return
   }
 
   const pool = new Pool({ connectionString: config.db_url })
-  const client = new Anthropic({ apiKey: config.anthropic_api_key })
 
   try {
     const { rows: prompts } = await pool.query<PromptRow>(
