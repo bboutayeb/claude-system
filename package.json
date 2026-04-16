@@ -10,6 +10,7 @@
     "install:hooks": "bun run src/cli.ts install",
     "uninstall:hooks": "bun run src/cli.ts uninstall",
     "status": "bun run src/cli.ts status",
+    "typecheck": "tsc --noEmit",
     "build": "bash scripts/build.sh",
     "db:up": "docker compose -f infra/docker-compose.yml up -d",
     "db:down": "docker compose -f infra/docker-compose.yml down"
@@ -18,5 +19,9 @@
     "@anthropic-ai/sdk": "^0.88.0",
     "@types/pg": "^8.11.10",
     "pg": "^8.13.3"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.12",
+    "typescript": "^6.0.2"
   }
 }

@@ -8,7 +8,9 @@ import { handleAmbiguityList, handleAmbiguityFeedback } from "./routes/ambiguity
 import { config, PID_FILE, MONITOR_DIR } from "./config"
 
 // Embedded at build time — Bun resolves this relative to src/
-import dashboardHtml from "../public/dashboard.html" with { type: "text" }
+// bun-types types *.html as HTMLBundle even for `with { type: "text" }` imports
+import _dashboardHtml from "../public/dashboard.html" with { type: "text" }
+const dashboardHtml = _dashboardHtml as unknown as string
 
 async function parseBody(req: Request): Promise<unknown> {
   const text = await req.text()
