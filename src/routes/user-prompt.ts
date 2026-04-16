@@ -5,11 +5,11 @@ import { calcHaikuCost } from "../lib/haiku-usage"
 import { markNewPrompt } from "../agents/realtime-scorer"
 
 const AMBIGUITY_TRIGGERS = [
-  // EN: action verbs implying redo/undo without an explicit target
-  /\b(redo|undo|revert)\b/i,
-  // FR: deictic references + ambiguous verbs
+  // FR: deictic references + ambiguous verbs (no EN triggers — aligned with source article)
   /\b(refaire|relancer|annuler|recommencer|implémenter)\b/i,
-  /\b(ça|ceci|cela)\b/i,
+  // ça/ceci/cela: \b does not work on non-ASCII chars in JS without the u flag
+  // — use explicit ASCII word-boundary lookaround instead
+  /(?<![a-zA-Z0-9_])(ça|ceci|cela)(?![a-zA-Z0-9_])/i,
   /\bles? (recommandations?|suggestions?|changements?|modifications?)\b/i,
 ]
 
@@ -85,7 +85,7 @@ async function getSuggestion(text: string, sessionId: string | null): Promise<Su
       )
       if (rows[0]?.prompt_text) {
         const prev = (rows[0].prompt_text as string).slice(0, 400)
-        content = `Previous clear prompt: ${prev}\n\nCurrent prompt: ${text.slice(0, HAIKU_PROMPT_LENGTH - prev.length - 50)}`
+        content = `Previous clear prompt: ${prev}\n\nCurrent prompt: ${text.slice(0, HAIKU_PROMPT_LENGTH - prev.length - 92)}`
       }
     } catch { /* fail open — use original text */ }
   }
