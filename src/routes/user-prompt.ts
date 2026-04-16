@@ -1,16 +1,16 @@
-import Anthropic from "@anthropic-ai/sdk"
 import { db } from "../db"
 import { config } from "../config"
 import { calcHaikuCost } from "../lib/haiku-usage"
 import { markNewPrompt } from "../agents/realtime-scorer"
+import { getAnthropicClient } from "../lib/anthropic-client"
 
 const AMBIGUITY_TRIGGERS = [
-  // FR: deictic references + ambiguous verbs (no EN triggers — aligned with source article)
-  /\b(refaire|relancer|annuler|recommencer|implémenter)\b/i,
+  // Déictiques purs — ambigus par construction, sans référent syntaxique
   // ça/ceci/cela: \b does not work on non-ASCII chars in JS without the u flag
   // — use explicit ASCII word-boundary lookaround instead
   /(?<![a-zA-Z0-9_])(ça|ceci|cela)(?![a-zA-Z0-9_])/i,
-  /\bles? (recommandations?|suggestions?|changements?|modifications?)\b/i,
+  // Back-references à une liste passée — quasi-toujours ambigus sans contexte
+  /\bles? (recommandations?|suggestions?)\b/i,
 ]
 
 const FALLBACK_REASON_FR =
@@ -63,28 +63,24 @@ type SuggestionResult =
   | { status: "clear" }                   // Haiku says prompt is clear
   | { status: "unavailable" }             // timeout, error, or no API key
 
-// Persistent client — avoids cold HTTPS connection on every hook call
-let haikuClient: Anthropic | null = null
-function getHaikuClient(): Anthropic | null {
-  if (!config.anthropic_api_key) return null
-  if (!haikuClient) haikuClient = new Anthropic({ apiKey: config.anthropic_api_key })
-  return haikuClient
-}
-
 async function getSuggestion(text: string, sessionId: string | null): Promise<SuggestionResult> {
-  const client = getHaikuClient()
+  const client = getAnthropicClient()
   if (!client) return { status: "unavailable" }
 
   // Enrich context with the last clear prompt from this session (like the article's RAG step)
   let content = text.slice(0, HAIKU_PROMPT_LENGTH)
   if (sessionId) {
     try {
-      const { rows } = await db.query(
-        "SELECT prompt_text FROM prompts WHERE session_id = $1 AND NOT is_ambiguous ORDER BY created_at DESC LIMIT 1",
-        [sessionId]
-      )
-      if (rows[0]?.prompt_text) {
-        const prev = (rows[0].prompt_text as string).slice(0, 400)
+      const result = await Promise.race([
+        db.query(
+          "SELECT prompt_text FROM prompts WHERE session_id = $1 AND NOT is_ambiguous ORDER BY created_at DESC LIMIT 1",
+          [sessionId]
+        ),
+        new Promise<null>(r => setTimeout(() => r(null), 100)),
+      ])
+      const row = result && "rows" in result ? result.rows[0] : null
+      if (row?.prompt_text) {
+        const prev = (row.prompt_text as string).slice(0, 400)
         content = `Previous clear prompt: ${prev}\n\nCurrent prompt: ${text.slice(0, HAIKU_PROMPT_LENGTH - prev.length - 92)}`
       }
     } catch { /* fail open — use original text */ }
@@ -105,7 +101,6 @@ async function getSuggestion(text: string, sessionId: string | null): Promise<Su
       { signal: abort.signal }
     )
 
-    // Track Haiku usage — fire-and-forget
     const { input_tokens, output_tokens } = result.usage
     const cost = calcHaikuCost(input_tokens, output_tokens)
     db.query(
@@ -162,7 +157,6 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
 
   const ambiguous = isAmbiguous(prompt)
 
-  // Log every prompt — fire-and-forget
   db.query(
     "INSERT INTO prompts (session_id, prompt_text, is_ambiguous) VALUES ($1, $2, $3) RETURNING id",
     [session_id ?? null, prompt.slice(0, 2000), ambiguous]
@@ -185,7 +179,6 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
 
   const source = suggestion.status === "question" ? "ia" : "heuristique"
 
-  // Log to ambiguities — fire-and-forget
   db.query(
     "INSERT INTO ambiguities (session_id, tool_name, prompt_text, suggestion, source) VALUES ($1, $2, $3, $4, $5)",
     [session_id ?? null, null, prompt.slice(0, 500), reason, source]

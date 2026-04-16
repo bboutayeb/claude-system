@@ -170,7 +170,7 @@ export async function handleDashboardHaikuCost(url: URL): Promise<Response> {
        SUM(output_tokens)                        AS output_tokens,
        ROUND(SUM(cost_usd)::numeric, 6)          AS cost_usd,
        SUM(cost_usd) FILTER (WHERE source = 'ambiguity')  AS cost_ambiguity,
-       SUM(cost_usd) FILTER (WHERE source = 'scoring')    AS cost_scoring,
+       SUM(cost_usd) FILTER (WHERE source IN ('scoring', 'realtime-scoring'))  AS cost_scoring,
        COUNT(*)                                  AS call_count
      FROM haiku_usage
      WHERE created_at >= CURRENT_DATE - $1::int

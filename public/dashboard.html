@@ -263,6 +263,16 @@
     function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML }
     function escAttr(s) { return escHtml(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;') }
 
+    const psSection = document.getElementById('project-stats-section')
+    function resetProjectStatsCard() {
+      document.getElementById('project-stats-label').textContent = 'Projet : —'
+      document.getElementById('ps-sessions').textContent = '—'
+      document.getElementById('ps-prompts').textContent = '—'
+      document.getElementById('ps-quality').textContent = '—'
+      document.getElementById('ps-ambiguities').textContent = '—'
+      psSection.style.display = 'none'
+    }
+
     function makeOrUpdate(id, config) {
       if (charts[id]) {
         charts[id].data = config.data
@@ -314,13 +324,14 @@
       const project = document.getElementById('project-filter').value
       const projectParam = project ? `&project=${encodeURIComponent(project)}` : ''
 
-      const [kpisRes, toolsRes, promptsRes, sessionsRes, haikuRes, ambigRes] = await Promise.all([
+      const [kpisRes, toolsRes, promptsRes, sessionsRes, haikuRes, ambigRes, psRes] = await Promise.all([
         fetch(`/dashboard/kpis?days=${days}`),
         fetch(`/dashboard/tools?days=${days}`),
         fetch(`/dashboard/prompts?days=${days}`),
         fetch(`/dashboard/sessions?days=${days}${projectParam}`),
         fetch(`/dashboard/haiku-cost?days=${days}`),
         fetch(`/dashboard/ambiguities?days=${days}`),
+        project ? fetch(`/dashboard/project-stats?project=${encodeURIComponent(project)}&days=${days}`) : Promise.resolve(null),
       ])
       const { rows: kpis } = await kpisRes.json()
       const { tools } = await toolsRes.json()
@@ -520,33 +531,18 @@
       }).join('')
 
       // Project stats card
-      const psSection = document.getElementById('project-stats-section')
-      const resetProjectStatsCard = () => {
-        document.getElementById('project-stats-label').textContent = 'Projet : —'
-        document.getElementById('ps-sessions').textContent = '—'
-        document.getElementById('ps-prompts').textContent = '—'
-        document.getElementById('ps-quality').textContent = '—'
-        document.getElementById('ps-ambiguities').textContent = '—'
-        psSection.style.display = 'none'
-      }
-      const currentProject = document.getElementById('project-filter').value
-      if (currentProject) {
+      if (project && psRes?.ok) {
         try {
-          const psRes = await fetch(`/dashboard/project-stats?project=${encodeURIComponent(currentProject)}&days=${days}`)
-          if (!psRes.ok) {
-            resetProjectStatsCard()
+          const { stats } = await psRes.json()
+          if (stats) {
+            document.getElementById('project-stats-label').textContent = `Projet : ${project}`
+            document.getElementById('ps-sessions').textContent = fmt(stats.total_sessions)
+            document.getElementById('ps-prompts').textContent = fmt(stats.total_prompts)
+            document.getElementById('ps-quality').textContent = stats.avg_quality != null ? parseFloat(stats.avg_quality).toFixed(1) + ' /10' : '—'
+            document.getElementById('ps-ambiguities').textContent = fmt(stats.total_ambiguities)
+            psSection.style.display = ''
           } else {
-            const { stats } = await psRes.json()
-            if (stats) {
-              document.getElementById('project-stats-label').textContent = `Projet : ${currentProject}`
-              document.getElementById('ps-sessions').textContent = fmt(stats.total_sessions)
-              document.getElementById('ps-prompts').textContent = fmt(stats.total_prompts)
-              document.getElementById('ps-quality').textContent = stats.avg_quality != null ? parseFloat(stats.avg_quality).toFixed(1) + ' /10' : '—'
-              document.getElementById('ps-ambiguities').textContent = fmt(stats.total_ambiguities)
-              psSection.style.display = ''
-            } else {
-              resetProjectStatsCard()
-            }
+            resetProjectStatsCard()
           }
         } catch (_) {
           resetProjectStatsCard()
