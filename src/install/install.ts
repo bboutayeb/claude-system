@@ -1,8 +1,9 @@
 import { mkdirSync, writeFileSync, copyFileSync, existsSync } from "fs"
-import { execSync, spawnSync } from "child_process"
+import { spawnSync } from "child_process"
 import { Pool } from "pg"
 import { MONITOR_DIR, BIN_DIR, BIN_PATH, CONFIG_PATH, config } from "../config"
 import { installHooks, cleanProjectLevelHooks } from "./settings-merge"
+import { detectContainerRuntime, composeUpAndWait } from "../lib/docker"
 
 // Embedded at build time
 import schemaSQL from "../../infra/db/schema.sql" with { type: "text" }
@@ -64,14 +65,7 @@ export async function install(): Promise<void> {
   console.log(`  ✓ Wrote ${composePath}`)
 
   // 5. Detect container runtime (docker or nerdctl)
-  let runtime: string | null = null
-  for (const candidate of ["docker", "nerdctl"]) {
-    const check = spawnSync(candidate, ["info"], { stdio: "pipe" })
-    if (check.status === 0) {
-      runtime = candidate
-      break
-    }
-  }
+  const runtime = detectContainerRuntime()
   if (!runtime) {
     console.error("\n  ERROR: No container runtime found (tried docker, nerdctl).")
     console.error("  Install Docker or containerd+nerdctl and make sure the daemon is running, then re-run install.")
@@ -79,37 +73,14 @@ export async function install(): Promise<void> {
   }
   console.log(`  ✓ Container runtime: ${runtime}`)
 
-  // 6. Start PostgreSQL container
+  // 6+7. Start PostgreSQL container and wait until pg_isready
   console.log("  Starting PostgreSQL container...")
-  const composeUp = spawnSync(runtime, ["compose", "up", "-d"], {
-    cwd: MONITOR_DIR,
-    stdio: "inherit",
-  })
-  if (composeUp.status !== 0) {
-    console.error(`  ERROR: ${runtime} compose up failed.`)
+  const up = await composeUpAndWait(MONITOR_DIR, runtime, { pgReadyTimeoutMs: 30000, verbose: true })
+  if (!up.ok) {
+    console.error(`\n  ERROR: PostgreSQL did not become ready (${up.error})`)
     process.exit(1)
   }
-
-  // 7. Wait for PG to be ready (up to 30s)
-  console.log("  Waiting for PostgreSQL to be ready...")
-  let pgReady = false
-  for (let i = 0; i < 30; i++) {
-    await new Promise(r => setTimeout(r, 1000))
-    const check = spawnSync(runtime, [
-      "compose", "exec", "-T", "postgres",
-      "pg_isready", "-U", "claude", "-d", "claude_system",
-    ], { cwd: MONITOR_DIR, stdio: "pipe" })
-    if (check.status === 0) {
-      pgReady = true
-      break
-    }
-    process.stdout.write(".")
-  }
-  if (!pgReady) {
-    console.error("\n  ERROR: PostgreSQL did not become ready in 30s.")
-    process.exit(1)
-  }
-  console.log("\n  ✓ PostgreSQL is ready")
+  console.log(`\n  ✓ PostgreSQL is ready (${Math.round(up.durationMs / 1000)}s)`)
 
   // 8. Run schema migrations
   console.log("  Running schema migrations...")

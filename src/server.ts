@@ -6,6 +6,7 @@ import { handleUserPrompt, loadAllowlist } from "./routes/user-prompt"
 import { handleDashboardKpis, handleDashboardTools, handleDashboardPrompts, handleDashboardSessions, handleDashboardHaikuCost, handleDashboardProjects, handleDashboardProjectStats, handleTranscript } from "./routes/dashboard"
 import { handleAmbiguityList, handleAmbiguityFeedback } from "./routes/ambiguity"
 import { config, PID_FILE, MONITOR_DIR } from "./config"
+import { db } from "./db"
 
 // Embedded at build time — Bun resolves this relative to src/
 // bun-types types *.html as HTMLBundle even for `with { type: "text" }` imports
@@ -35,7 +36,12 @@ export function startServer() {
       }
 
       if (req.method === "GET" && url.pathname === "/status") {
-        return new Response(JSON.stringify({ ok: true, apiKey: hasApiKey }), {
+        let dbReady = false
+        try {
+          await db.query("SELECT 1")
+          dbReady = true
+        } catch {}
+        return new Response(JSON.stringify({ ok: true, apiKey: hasApiKey, dbReady }), {
           headers: { "Content-Type": "application/json" },
         })
       }

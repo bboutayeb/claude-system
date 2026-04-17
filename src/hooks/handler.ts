@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync } from "fs"
 import { aggregateTranscriptTokens } from "./transcript"
 import { config, SERVER_URL, MONITOR_DIR } from "../config"
 import { homedir } from "os"
+import { detectContainerRuntime, composeUpAndWait } from "../lib/docker"
 
 async function readStdin(): Promise<unknown> {
   const chunks: Buffer[] = []
@@ -85,8 +86,46 @@ async function maybeRunVerifier(): Promise<void> {
 
 // ── Event handlers ────────────────────────────────────────────────────────────
 
+interface SessionStartCheck {
+  apiKey: boolean | null  // null = status endpoint unreachable
+  dbMessage: string | null  // non-null when auto-start intervened
+}
+
+async function checkServerAndEnsureDb(): Promise<SessionStartCheck> {
+  let apiKey: boolean | null = null
+  let dbReady = false
+  try {
+    const res = await fetch(`${SERVER_URL}/status`, { signal: AbortSignal.timeout(1500) })
+    const status = await res.json() as { apiKey?: boolean; dbReady?: boolean }
+    apiKey = Boolean(status.apiKey)
+    dbReady = Boolean(status.dbReady)
+  } catch {
+    return { apiKey: null, dbMessage: null }
+  }
+
+  if (dbReady) return { apiKey, dbMessage: null }
+
+  const runtime = detectContainerRuntime()
+  if (!runtime) {
+    return {
+      apiKey,
+      dbMessage: "[claude-monitor] DB Postgres arrêtée et aucun runtime container trouvé (docker/nerdctl). Lance-la manuellement : `docker compose -f ~/.claude-monitor/docker-compose.yml up -d`.",
+    }
+  }
+
+  const result = await composeUpAndWait(MONITOR_DIR, runtime, { pgReadyTimeoutMs: 10000, verbose: false })
+  return {
+    apiKey,
+    dbMessage: result.ok
+      ? `[claude-monitor] DB Postgres redémarrée automatiquement (${Math.round(result.durationMs / 1000)}s)`
+      : `[claude-monitor] DB Postgres arrêtée et l'auto-start a échoué : ${result.error}. Lance-la manuellement : \`docker compose -f ~/.claude-monitor/docker-compose.yml up -d\`.`,
+  }
+}
+
 async function onSessionStart(payload: Record<string, unknown>): Promise<void> {
   await ensureServerRunning()
+
+  const { apiKey, dbMessage } = await checkServerAndEnsureDb()
 
   const body = {
     session_id: payload.session_id,
@@ -106,17 +145,22 @@ async function onSessionStart(payload: Record<string, unknown>): Promise<void> {
     })
   } catch {}
 
-  // Show API key status in Claude console
-  try {
-    const res = await fetch(`${SERVER_URL}/status`, { signal: AbortSignal.timeout(1000) })
-    const status = await res.json() as { apiKey?: boolean }
-    if (status.apiKey) {
-      console.error("[claude-monitor] server OK — ANTHROPIC_API_KEY present")
-    } else {
-      console.error("[claude-monitor] server OK — ANTHROPIC_API_KEY not set (Haiku disabled)")
-    }
-  } catch {
+  if (apiKey === null) {
     console.error("[claude-monitor] server OK")
+  } else if (apiKey) {
+    console.error("[claude-monitor] server OK — ANTHROPIC_API_KEY present")
+  } else {
+    console.error("[claude-monitor] server OK — ANTHROPIC_API_KEY not set (Haiku disabled)")
+  }
+
+  if (dbMessage) {
+    process.stdout.write(JSON.stringify({
+      systemMessage: dbMessage,
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: dbMessage,
+      },
+    }))
   }
 
   await maybeRunVerifier()
