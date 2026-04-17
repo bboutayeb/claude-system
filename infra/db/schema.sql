@@ -16,8 +16,14 @@ CREATE TABLE IF NOT EXISTS sessions (
   model TEXT,
   source TEXT,
   agent_type TEXT,
-  transcript_path TEXT
+  transcript_path TEXT,
+  cwd TEXT,
+  project TEXT
 );
+
+CREATE INDEX IF NOT EXISTS idx_sessions_project_started_at
+  ON sessions (project, started_at DESC)
+  WHERE project IS NOT NULL;
 
 -- ── tool_calls ────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS tool_calls (
@@ -94,8 +100,11 @@ CREATE TABLE IF NOT EXISTS prompts (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS prompts_session_idx ON prompts(session_id);
-CREATE INDEX IF NOT EXISTS prompts_created_idx ON prompts(created_at);
+CREATE INDEX IF NOT EXISTS prompts_session_idx      ON prompts(session_id);
+CREATE INDEX IF NOT EXISTS prompts_created_idx     ON prompts(created_at);
+CREATE INDEX IF NOT EXISTS prompts_session_clear_idx
+  ON prompts (session_id, created_at DESC)
+  WHERE is_ambiguous = false;
 
 -- ── kpi_snapshots ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS kpi_snapshots (

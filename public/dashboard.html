@@ -132,11 +132,16 @@
 <body>
   <header>
     <h1>Claude System — Dashboard</h1>
-    <select id="days">
-      <option value="7">7 jours</option>
-      <option value="14">14 jours</option>
-      <option value="30">30 jours</option>
-    </select>
+    <div style="display:flex;gap:0.75rem;align-items:center">
+      <select id="project-filter">
+        <option value="">Tous les projets</option>
+      </select>
+      <select id="days">
+        <option value="7">7 jours</option>
+        <option value="14">14 jours</option>
+        <option value="30">30 jours</option>
+      </select>
+    </div>
   </header>
 
   <div class="counters">
@@ -159,6 +164,16 @@
     <div class="card">
       <div class="card-label">Coût Haiku (période)</div>
       <div class="card-value" id="cnt-haiku-cost">—</div>
+    </div>
+  </div>
+
+  <div id="project-stats-section" class="card" style="margin-bottom:1.5rem;display:none">
+    <div class="card-label" id="project-stats-label">Projet : —</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-top:0.75rem">
+      <div><div class="card-label">Sessions</div><div class="card-value" id="ps-sessions">—</div></div>
+      <div><div class="card-label">Prompts</div><div class="card-value" id="ps-prompts">—</div></div>
+      <div><div class="card-label">Qualité moy.</div><div class="card-value" id="ps-quality">—</div></div>
+      <div><div class="card-label">Ambiguïtés</div><div class="card-value" id="ps-ambiguities">—</div></div>
     </div>
   </div>
 
@@ -217,6 +232,7 @@
         <thead>
           <tr>
             <th>Date</th>
+            <th>Projet</th>
             <th>Modèle</th>
             <th>Prompts</th>
             <th>Score moy.</th>
@@ -244,6 +260,18 @@
     function fmt(n) { return n == null ? '—' : Number(n).toLocaleString('fr-FR') }
     function fmtUsd(n) { return n == null ? '—' : '$' + parseFloat(n).toFixed(4) }
     function fmtPct(n) { return n == null ? '—' : parseFloat(n).toFixed(1) + '%' }
+    function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML }
+    function escAttr(s) { return escHtml(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;') }
+
+    const psSection = document.getElementById('project-stats-section')
+    function resetProjectStatsCard() {
+      document.getElementById('project-stats-label').textContent = 'Projet : —'
+      document.getElementById('ps-sessions').textContent = '—'
+      document.getElementById('ps-prompts').textContent = '—'
+      document.getElementById('ps-quality').textContent = '—'
+      document.getElementById('ps-ambiguities').textContent = '—'
+      psSection.style.display = 'none'
+    }
 
     function makeOrUpdate(id, config) {
       if (charts[id]) {
@@ -263,14 +291,47 @@
       load(document.getElementById('days').value)
     }
 
+    async function loadProjects() {
+      const sel = document.getElementById('project-filter')
+      sel.replaceChildren()
+      const defaultOption = document.createElement('option')
+      defaultOption.value = ''
+      defaultOption.textContent = 'Tous les projets'
+      sel.appendChild(defaultOption)
+
+      try {
+        const res = await fetch('/dashboard/projects')
+        if (!res.ok) return
+
+        const data = await res.json()
+        const projects = Array.isArray(data.projects) ? data.projects : []
+
+        projects.forEach(p => {
+          const option = document.createElement('option')
+          option.value = p
+          option.textContent = p
+          sel.appendChild(option)
+        })
+
+        const saved = sessionStorage.getItem('selectedProject') || ''
+        if (projects.includes(saved)) sel.value = saved
+      } catch (_) {
+        // Keep the default "Tous les projets" option if the request fails
+      }
+    }
+
     async function load(days) {
-      const [kpisRes, toolsRes, promptsRes, sessionsRes, haikuRes, ambigRes] = await Promise.all([
+      const project = document.getElementById('project-filter').value
+      const projectParam = project ? `&project=${encodeURIComponent(project)}` : ''
+
+      const [kpisRes, toolsRes, promptsRes, sessionsRes, haikuRes, ambigRes, psRes] = await Promise.all([
         fetch(`/dashboard/kpis?days=${days}`),
         fetch(`/dashboard/tools?days=${days}`),
         fetch(`/dashboard/prompts?days=${days}`),
-        fetch(`/dashboard/sessions?days=${days}`),
+        fetch(`/dashboard/sessions?days=${days}${projectParam}`),
         fetch(`/dashboard/haiku-cost?days=${days}`),
         fetch(`/dashboard/ambiguities?days=${days}`),
+        project ? fetch(`/dashboard/project-stats?project=${encodeURIComponent(project)}&days=${days}`) : Promise.resolve(null),
       ])
       const { rows: kpis } = await kpisRes.json()
       const { tools } = await toolsRes.json()
@@ -438,15 +499,17 @@
         ? '<tr><td colspan="5" style="color:#475569;text-align:center">Aucune ambiguïté sur la période</td></tr>'
         : ambiguities.map(a => {
             const date = new Date(a.detected_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
-            const prompt = a.prompt_text.length > 80 ? a.prompt_text.slice(0, 80) + '…' : a.prompt_text
-            const suggestion = (a.suggestion || '').length > 60 ? a.suggestion.slice(0, 60) + '…' : (a.suggestion || '—')
+            const rawPrompt = a.prompt_text || ''
+            const prompt = escHtml(rawPrompt.length > 80 ? rawPrompt.slice(0, 80) + '…' : rawPrompt)
+            const rawSugg = a.suggestion || ''
+            const suggestion = escHtml(rawSugg.length > 60 ? rawSugg.slice(0, 60) + '…' : (rawSugg || '—'))
             const isFp = a.false_positive === true
             return `<tr>
               <td>${date}</td>
-              <td>${a.source || '—'}</td>
-              <td title="${a.prompt_text.replace(/"/g, '&quot;')}">${prompt}</td>
+              <td>${escHtml(a.source || '—')}</td>
+              <td title="${escAttr(a.prompt_text)}">${prompt}</td>
               <td>${suggestion}</td>
-              <td><button class="btn-fp${isFp ? ' active' : ''}" onclick="toggleFp(${a.id})">${isFp ? 'Faux positif ✓' : 'Marquer FP'}</button></td>
+              <td><button class="btn-fp${isFp ? ' active' : ''}" onclick="toggleFp(${parseInt(a.id, 10)})">${isFp ? 'Faux positif ✓' : 'Marquer FP'}</button></td>
             </tr>`
           }).join('')
 
@@ -454,7 +517,8 @@
       const tbody = document.getElementById('sessions-tbody')
       tbody.innerHTML = sessions.map(s => {
         const date = new Date(s.started_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
-        const model = s.model ? s.model.split('-').slice(-2).join('-') : '—'
+        const proj = escHtml(s.project || '—')
+        const model = escHtml(s.model ? s.model.split('-').slice(-2).join('-') : '—')
         const score = s.avg_quality != null ? parseFloat(s.avg_quality).toFixed(1) + ' /10' : '—'
         const ambigus = parseInt(s.ambiguity_count) || 0
         const iaCount = parseInt(s.ambiguity_ia) || 0
@@ -463,12 +527,37 @@
         const link = s.transcript_path
           ? `<a class="transcript-link" href="/transcript?path=${encodeURIComponent(s.transcript_path)}" target="_blank">📄</a>`
           : '—'
-        return `<tr><td>${date}</td><td>${model}</td><td>${parseInt(s.prompt_count) || 0}</td><td>${score}</td><td>${ambigus}</td><td>${source}</td><td>${link}</td></tr>`
+        return `<tr><td>${date}</td><td>${proj}</td><td>${model}</td><td>${parseInt(s.prompt_count) || 0}</td><td>${score}</td><td>${ambigus}</td><td>${source}</td><td>${link}</td></tr>`
       }).join('')
+
+      // Project stats card
+      if (project && psRes?.ok) {
+        try {
+          const { stats } = await psRes.json()
+          if (stats) {
+            document.getElementById('project-stats-label').textContent = `Projet : ${project}`
+            document.getElementById('ps-sessions').textContent = fmt(stats.total_sessions)
+            document.getElementById('ps-prompts').textContent = fmt(stats.total_prompts)
+            document.getElementById('ps-quality').textContent = stats.avg_quality != null ? parseFloat(stats.avg_quality).toFixed(1) + ' /10' : '—'
+            document.getElementById('ps-ambiguities').textContent = fmt(stats.total_ambiguities)
+            psSection.style.display = ''
+          } else {
+            resetProjectStatsCard()
+          }
+        } catch (_) {
+          resetProjectStatsCard()
+        }
+      } else {
+        resetProjectStatsCard()
+      }
     }
 
     document.getElementById('days').addEventListener('change', e => load(e.target.value))
-    load(7)
+    document.getElementById('project-filter').addEventListener('change', e => {
+      sessionStorage.setItem('selectedProject', e.target.value)
+      load(document.getElementById('days').value)
+    })
+    loadProjects().finally(() => load(7))
   </script>
 </body>
 </html>

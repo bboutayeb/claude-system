@@ -1,23 +1,24 @@
-# Étape 7 — Scoring temps réel (long terme, ~2h)
+# Étape 8 — Multi-projets (long terme, ~2h)
 
-> **Branche :** `feat/realtime-scoring` depuis `integ`  
+> **Branche :** `feat/multi-projects` depuis `integ`  
 > **Contexte complet :** `@docs/plans/2026-04-13_2259_roadmap-implementation.md`
 
 ---
 
 ## Problème
 
-Le scoring qualité est actuellement **batch uniquement** : il se déclenche une fois à la fin de la session (`Stop` hook), lit le transcript JSONL depuis le disque, et score chaque prompt via Haiku. L'utilisateur n'a aucun feedback pendant la session.
+Toutes les sessions sont agrégées sans distinction de projet. Un utilisateur qui travaille sur plusieurs codebases ne peut pas segmenter ses stats (tokens, scores, ambiguïtés) par projet.
 
-Les prompts courts comme `oui` / `continue` ne peuvent pas être scorés isolément — ils n'ont de sens que dans leur contexte conversationnel.
+Le payload `SessionStart` de Claude Code expose déjà le champ `cwd` — il suffit de le capturer et de le propager.
 
 ---
 
-## Approche : scoring par échange complet
+## Approche
 
-Plutôt que de scorer chaque prompt isolément, le scoring temps réel évalue un **échange complet** = le prompt courant + le contexte des 2-3 messages précédents. Cela résout le cas des prompts courts qui sont parfaitement clairs dans leur contexte conversationnel.
-
-Le scoring batch au `Stop` reste en place comme filet de sécurité (il score les prompts manqués par le temps réel).
+- `project` = dernier segment du `cwd` (ex. `/home/user/Code/myapp` → `myapp`)
+- Les `kpi_snapshots` restent globaux (refacto trigger PostgreSQL trop risquée) — on filtre dynamiquement côté API
+- Nouveau endpoint `/dashboard/project-stats` pour les stats par projet (calcul on-the-fly depuis `sessions` + jointures)
+- Dropdown projet dans le header du dashboard, filtre la table sessions + les stats
 
 ---
 
@@ -25,101 +26,105 @@ Le scoring batch au `Stop` reste en place comme filet de sécurité (il score le
 
 | Fichier | Action |
 |---------|--------|
-| `infra/db/migrations/012_haiku_usage_realtime_source.sql` | Créer — migration CHECK constraint |
-| `infra/db/schema.sql` | Modifier — mettre à jour le CHECK de haiku_usage |
-| `src/agents/quality-scorer.ts` | Modifier — exporter `scoreExchange`, `findAssistantResponse`, `ScoreResult` |
-| `src/agents/realtime-scorer.ts` | Créer — module principal du scoring temps réel |
-| `src/config.ts` | Modifier — ajouter `realtime_scoring` et `realtime_scoring_throttle_s` |
-| `src/routes/post-tool.ts` | Modifier — appel fire-and-forget `maybeScore()` |
-| `src/routes/user-prompt.ts` | Modifier — appel synchrone `markNewPrompt()` |
-| `src/routes/session.ts` | Modifier — appel `clearSession()` au Stop |
+| `infra/db/migrations/013_sessions_project.sql` | Créer — ajouter `cwd` et `project` à `sessions` |
+| `infra/db/schema.sql` | Modifier — mettre à jour la table `sessions` |
+| `src/hooks/handler.ts` | Modifier — ajouter `cwd` dans le body envoyé à `/session/start` |
+| `src/routes/session.ts` | Modifier — capturer `cwd`, calculer `project = basename(cwd)` |
+| `src/routes/dashboard.ts` | Modifier — filtrer sessions par `project` + nouveau endpoint `/dashboard/projects` et `/dashboard/project-stats` |
+| `public/dashboard.html` | Modifier — dropdown projet dans le header, filtre propagé aux requêtes |
 
 ---
 
 ## Changements
 
-### 1. Migration DB — `infra/db/migrations/012_haiku_usage_realtime_source.sql`
+### 1. Migration DB — `infra/db/migrations/013_sessions_project.sql`
 
 ```sql
-ALTER TABLE haiku_usage DROP CONSTRAINT IF EXISTS haiku_usage_source_check;
-ALTER TABLE haiku_usage ADD CONSTRAINT haiku_usage_source_check
-  CHECK (source IN ('ambiguity', 'scoring', 'realtime-scoring'));
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS cwd TEXT;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS project TEXT;
+
+-- Backfill : pas de cwd historique → project reste NULL (affiché "—" dans le dashboard)
 ```
 
-Mettre aussi à jour `infra/db/schema.sql` pour les installs fresh (table `haiku_usage`).
+Mettre à jour `infra/db/schema.sql` : ajouter `cwd TEXT` et `project TEXT` après `transcript_path`.
 
-### 2. Exports depuis `src/agents/quality-scorer.ts`
+### 2. Hook handler — `src/hooks/handler.ts`
 
-Ajouter `export` à `scoreExchange`, `findAssistantResponse`, et `ScoreResult`. Pas de changement de logique.
+Dans `onSessionStart()`, ajouter `cwd` au body :
 
-### 3. Nouveau module `src/agents/realtime-scorer.ts` (~100 lignes)
-
-**State en mémoire :**
 ```typescript
-interface SessionState {
-  lastPromptTs: number      // timestamp du dernier UserPromptSubmit
-  lastScoreTs: number       // timestamp du dernier score réussi
-  transcriptPath: string | null
+const body = {
+  session_id: payload.session_id,
+  model: payload.model,
+  source: payload.source,
+  agent_type: payload.agent_type,
+  transcript_path: payload.transcript_path,
+  cwd: payload.cwd,   // ← nouveau
 }
-const sessions = new Map<string, SessionState>()
-const THROTTLE_MS = 30_000  // 30s par défaut, configurable
 ```
 
-**API publique :**
+### 3. Route session — `src/routes/session.ts`
 
-- `markNewPrompt(sessionId: string): void` — synchrone, appelé par user-prompt après chaque INSERT INTO prompts. Met à jour `lastPromptTs = Date.now()`. Crée l'entrée dans la Map si elle n'existe pas encore.
-
-- `maybeScore(sessionId: string): Promise<void>` — appelé fire-and-forget depuis post-tool. Logique :
-  1. Guard : `config.realtime_scoring === false` ou pas d'API key → return
-  2. Dedup : `lastPromptTs <= lastScoreTs` → return (pas de nouveau prompt depuis le dernier score)
-  3. Throttle : `Date.now() - lastScoreTs < THROTTLE_MS` → return
-  4. Résoudre `transcriptPath` : query DB une fois (`SELECT transcript_path FROM sessions WHERE id = $1`), cache dans la Map. Si null, return.
-  5. Lire les ~100 dernières lignes du transcript (pour éviter de parser des mégaoctets sur les longues sessions)
-  6. Extraire les 2-3 derniers échanges via `extractRecentExchanges(lines, 3)`
-  7. Si moins d'un échange trouvé → return
-  8. Appeler `scoreExchange(client, exchanges[last].prompt, exchanges[last].response)` (réutilisé depuis quality-scorer.ts)
-  9. Mettre à jour `lastScoreTs = Date.now()` dans la Map
-  10. `UPDATE prompts SET quality_score = $1 WHERE id = (SELECT id FROM prompts WHERE session_id = $2 AND quality_score IS NULL ORDER BY created_at DESC LIMIT 1)`
-  11. Enregistrer dans `haiku_usage` avec `source = 'realtime-scoring'`
-  12. Tout wrappé dans try/catch — erreurs loggées, jamais propagées
-
-- `clearSession(sessionId: string): void` — supprime l'entrée de la Map. Appelé au Stop pour éviter les fuites mémoire.
-
-**Helper privé :**
-- `extractRecentExchanges(lines: string[], count = 3): Array<{ prompt: string, response: string }>` — parse le JSONL en arrière pour trouver les N dernières paires user/assistant. Réutilise la même logique de parsing que `findAssistantResponse` (type checks sur `entry.type`, `entry.message.role`, extraction du contenu text).
-
-**Client Anthropic :** Lazy singleton au niveau du module (initialisé au premier appel à `maybeScore`).
-
-### 4. Config — `src/config.ts`
-
-Ajouter à l'interface `Config` et au loading :
+Dans `handleSessionStart()` :
 ```typescript
-realtime_scoring: boolean           // default: true
-realtime_scoring_throttle_s: number // default: 30
+import { basename } from "path"
+
+const { session_id, model, source, agent_type, transcript_path, cwd } = body as { ... }
+const project = cwd ? basename(cwd as string) : null
+
+// Dans l'INSERT :
+`INSERT INTO sessions (id, model, source, agent_type, transcript_path, cwd, project)
+ VALUES ($1, $2, $3, $4, $5, $6, $7)
+ ON CONFLICT (id) DO UPDATE SET
+   ...
+   cwd     = COALESCE(EXCLUDED.cwd, sessions.cwd),
+   project = COALESCE(EXCLUDED.project, sessions.project)`
+// params : [..., cwd ?? null, project]
 ```
 
-Lus depuis `~/.claude-monitor/config.json` avec fallback aux defaults. Le throttle en ms = `config.realtime_scoring_throttle_s * 1000`.
+### 4. Routes dashboard — `src/routes/dashboard.ts`
 
-### 5. Wiring des routes existantes
+**Nouvel endpoint `GET /dashboard/projects`** — retourne la liste des projets distincts :
+```sql
+SELECT DISTINCT project FROM sessions
+WHERE project IS NOT NULL
+ORDER BY project
+```
 
-**`src/routes/post-tool.ts`** — après l'INSERT tool_calls, avant le `return new Response("ok")` :
+**Nouvel endpoint `GET /dashboard/project-stats?project=X&days=N`** — stats dynamiques par projet :
+```sql
+SELECT
+  COUNT(DISTINCT s.id)                                  AS total_sessions,
+  COALESCE(SUM(s.input_tokens), 0)                      AS total_input_tokens,
+  COALESCE(SUM(s.output_tokens), 0)                     AS total_output_tokens,
+  ROUND(AVG(p.quality_score), 2)                        AS avg_quality,
+  COUNT(DISTINCT p.id)                                  AS total_prompts,
+  COUNT(DISTINCT a.id)                                  AS total_ambiguities
+FROM sessions s
+LEFT JOIN prompts p ON p.session_id = s.id
+LEFT JOIN ambiguities a ON a.session_id = s.id
+WHERE s.project = $1
+  AND s.started_at >= CURRENT_DATE - $2::int
+```
+
+**Endpoint existant `GET /dashboard/sessions`** — ajouter le paramètre `project` optionnel :
 ```typescript
-import { maybeScore } from "../agents/realtime-scorer"
-// Fire-and-forget — ne bloque jamais la réponse
-if (session_id) maybeScore(session_id).catch(() => {})
+const project = url.searchParams.get("project") // null = tous les projets
+// Ajouter dans le WHERE : AND ($3::text IS NULL OR s.project = $3)
+// Ajouter s.project, s.cwd dans le SELECT
 ```
 
-**`src/routes/user-prompt.ts`** — après chaque INSERT INTO prompts (chemin allowlisted ligne ~126 ET chemin normal ligne ~134) :
-```typescript
-import { markNewPrompt } from "../agents/realtime-scorer"
-if (session_id) markNewPrompt(session_id)
-```
+### 5. Dashboard — `public/dashboard.html`
 
-**`src/routes/session.ts`** — dans `handleSessionStop`, après l'UPDATE sessions :
-```typescript
-import { clearSession } from "../agents/realtime-scorer"
-if (session_id) clearSession(session_id)
-```
+**Dropdown projet dans le header** :
+- Charger `/dashboard/projects` au démarrage → populate `<select id="project-filter">`
+- Option "Tous les projets" en premier (value = `""`)
+- Stocker la sélection dans `sessionStorage`
+
+**Propagation du filtre** :
+- `loadSessions()` ajoute `?project=X` si sélection non vide
+- `loadProjectStats()` charge `/dashboard/project-stats?project=X&days=N` et affiche une mini-carte KPI "Projet actif"
+- Changement du dropdown → recharge sessions + project-stats (pas les KPI globaux — ceux-ci restent globaux)
 
 ---
 
@@ -128,48 +133,42 @@ if (session_id) clearSession(session_id)
 ```bash
 # 1. Appliquer la migration
 psql postgresql://claude:claude@localhost:5432/claude_system \
-  -f infra/db/migrations/012_haiku_usage_realtime_source.sql
+  -f infra/db/migrations/013_sessions_project.sql
 
 # 2. Démarrer le dev server
 bun run src/cli.ts server
 
-# 3. Simuler un flow complet (curl)
-# a) POST /session/start avec transcript_path
-# b) POST /user-prompt → markNewPrompt déclenché
-# c) POST /post-tool → maybeScore déclenché (après ~1s pour que le transcript soit écrit)
-# d) Vérifier le score :
-psql postgresql://claude:claude@localhost:5432/claude_system \
-  -c "SELECT id, quality_score FROM prompts ORDER BY id DESC LIMIT 3"
-# e) Vérifier le coût Haiku :
-psql postgresql://claude:claude@localhost:5432/claude_system \
-  -c "SELECT source, cost_usd FROM haiku_usage ORDER BY id DESC LIMIT 5"
+# 3. Simuler un SessionStart avec cwd
+curl -s -X POST http://127.0.0.1:18766/session/start \
+  -H "Content-Type: application/json" \
+  -d '{"session_id":"test-mp","model":"claude-sonnet-4-5","cwd":"/home/user/Code/myapp"}'
 
-# 4. Vérifier le throttle :
-# Deux POST /post-tool consécutifs → seul le 1er score (2ème bloqué par throttle 30s)
+# 4. Vérifier project extrait
+psql postgresql://claude:claude@localhost:5432/claude_system \
+  -c "SELECT id, cwd, project FROM sessions WHERE id = 'test-mp'"
+# → project = 'myapp'
 
-# 5. Build compilé
+# 5. Vérifier endpoints
+curl -s http://127.0.0.1:18766/dashboard/projects | jq .
+curl -s "http://127.0.0.1:18766/dashboard/project-stats?project=myapp&days=7" | jq .
+curl -s "http://127.0.0.1:18766/dashboard/sessions?project=myapp" | jq '.sessions | length'
+
+# 6. Build compilé
 bash scripts/build.sh
-./dist/claude-monitor-linux-x64 version  # → 0.2.0 (pas de bump pour étape 7)
+./dist/claude-monitor-linux-x64 version
 ```
-
----
-
-## Estimation coût
-
-- Throttle : max 1 appel/30s/session = max 2 appels/min
-- ~1000 input tokens + 10 output tokens par appel ≈ $0.0008/appel
-- Session typique (1h, activité intermittente) : ~20-40 appels ≈ $0.02-0.03
-- Visible immédiatement dans le dashboard coûts Haiku (source `realtime-scoring`)
 
 ---
 
 ## Statut
 
-- [ ] Migration 012 créée et appliquée
-- [ ] Exports quality-scorer.ts
-- [ ] Module realtime-scorer.ts créé
-- [ ] Config étendue
-- [ ] Routes wirées (post-tool, user-prompt, session)
-- [ ] Tests manuels (flow complet + throttle)
-- [ ] Build compilé vérifié
+- [x] Migration 013 créée et appliquée
+- [x] `handler.ts` passe `cwd` au serveur
+- [x] `session.ts` capture `cwd` et calcule `project`
+- [x] Endpoint `/dashboard/projects`
+- [x] Endpoint `/dashboard/project-stats`
+- [x] Filtre `project` dans `/dashboard/sessions`
+- [x] Dashboard : dropdown projet + propagation filtre
+- [x] Tests manuels (SessionStart → project extrait, filtre dashboard)
+- [x] Build compilé vérifié
 - [ ] PR vers `integ` mergée

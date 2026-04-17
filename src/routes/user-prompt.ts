@@ -1,22 +1,33 @@
-import Anthropic from "@anthropic-ai/sdk"
 import { db } from "../db"
 import { config } from "../config"
 import { calcHaikuCost } from "../lib/haiku-usage"
 import { markNewPrompt } from "../agents/realtime-scorer"
+import { getAnthropicClient } from "../lib/anthropic-client"
 
 const AMBIGUITY_TRIGGERS = [
-  // English deictic references
-  /\b(this|that|it|them|those|these)\b/i,
-  /\b(redo|undo|revert|retry)\b/i,
-  /\bthe (recommendations?|suggestions?|changes?)\b/i,
-  // French deictic references + ambiguous verbs
-  /\b(refaire|relancer|annuler|recommencer|implémenter)\b/i,
-  /\b(ça|ceci|cela)\b/i,
-  /\bles? (recommandations?|suggestions?|changements?|modifications?)\b/i,
+  // Déictiques purs — ambigus par construction, sans référent syntaxique
+  // ça/ceci/cela: in JavaScript, \b is based on ASCII \w only; the u flag does not
+  // make it Unicode-aware, so use explicit ASCII word-boundary lookaround instead
+  /(?<![a-zA-Z0-9_])(ça|ceci|cela)(?![a-zA-Z0-9_])/i,
+  // Back-references à une liste passée — quasi-toujours ambigus sans contexte
+  /\bles? (recommandations?|suggestions?)\b/i,
 ]
 
-const FALLBACK_REASON =
+const FALLBACK_REASON_FR =
   "Votre prompt semble ambigu. Pourriez-vous préciser ce que vous souhaitez faire ?"
+const FALLBACK_REASON_EN =
+  "Your prompt seems ambiguous. Could you clarify what you'd like to do?"
+
+function getFallbackReason(text: string): string {
+  return /[àâéèêëïîôùûüç]|\b(le|la|les|un|une|des|du|je|tu|il|nous|vous|ils)\b/i.test(text)
+    ? FALLBACK_REASON_FR
+    : FALLBACK_REASON_EN
+}
+
+// Only scan the instruction prefix — pasted context/assistant text follows later
+const AMBIGUITY_SCAN_LENGTH = 500
+// Haiku only needs the instruction to judge intent — caps latency and cost
+const HAIKU_PROMPT_LENGTH = 800
 
 // Slash commands (/compact, /help, /clear, etc.) must never be blocked
 const SLASH_COMMAND_RE = /^\/\w+/
@@ -40,14 +51,11 @@ function isAllowlisted(text: string): boolean {
 }
 
 function isAmbiguous(text: string): boolean {
-  const len = text.trim().length
-  // Very short: always ambiguous
-  if (len < 10) return true
-  const matches = AMBIGUITY_TRIGGERS.filter((r) => r.test(text)).length
-  // Medium length: one trigger is enough
-  if (len < 40) return matches >= 1
-  // Long prompt: require at least two independent signals
-  return matches >= 2
+  const trimmed = text.trim()
+  // Short prompt: always ambiguous regardless of content (aligned with article: < 30 chars)
+  if (trimmed.length < 30) return true
+  // Longer prompt: only flag on explicit ambiguous keywords
+  return AMBIGUITY_TRIGGERS.some((r) => r.test(trimmed.slice(0, AMBIGUITY_SCAN_LENGTH)))
 }
 
 type SuggestionResult =
@@ -55,12 +63,28 @@ type SuggestionResult =
   | { status: "clear" }                   // Haiku says prompt is clear
   | { status: "unavailable" }             // timeout, error, or no API key
 
-async function getSuggestion(text: string): Promise<SuggestionResult> {
-  if (!config.anthropic_api_key) return { status: "unavailable" }
+async function getSuggestion(text: string, sessionId: string | null): Promise<SuggestionResult> {
+  const client = getAnthropicClient()
+  if (!client) return { status: "unavailable" }
 
-  const client = new Anthropic({ apiKey: config.anthropic_api_key })
+  // Enrich context with the last clear prompt from this session (like the article's RAG step)
+  let content = text.slice(0, HAIKU_PROMPT_LENGTH)
+  if (sessionId) {
+    try {
+      const result = await db.query(
+        "SELECT prompt_text FROM prompts WHERE session_id = $1 AND NOT is_ambiguous ORDER BY created_at DESC LIMIT 1",
+        [sessionId]
+      )
+      const row = result.rows[0]
+      if (row?.prompt_text) {
+        const prev = (row.prompt_text as string).slice(0, 400)
+        content = `Previous clear prompt: ${prev}\n\nCurrent prompt: ${text.slice(0, HAIKU_PROMPT_LENGTH - prev.length - 92)}`
+      }
+    } catch { /* fail open — use original text */ }
+  }
+
   const abort = new AbortController()
-  const timer = setTimeout(() => abort.abort(), 1200)
+  const timer = setTimeout(() => abort.abort(), 3000)
 
   try {
     const result = await client.messages.create(
@@ -69,12 +93,11 @@ async function getSuggestion(text: string): Promise<SuggestionResult> {
         max_tokens: 80,
         system:
           "You detect ambiguous prompts. Respond with ONE short clarifying question (max 20 words). Respond in the same language as the input. If the text is already clear and specific, respond with an empty string.",
-        messages: [{ role: "user", content: text }],
+        messages: [{ role: "user", content }],
       },
       { signal: abort.signal }
     )
 
-    // Track Haiku usage — fire-and-forget
     const { input_tokens, output_tokens } = result.usage
     const cost = calcHaikuCost(input_tokens, output_tokens)
     db.query(
@@ -131,7 +154,6 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
 
   const ambiguous = isAmbiguous(prompt)
 
-  // Log every prompt — fire-and-forget
   db.query(
     "INSERT INTO prompts (session_id, prompt_text, is_ambiguous) VALUES ($1, $2, $3) RETURNING id",
     [session_id ?? null, prompt.slice(0, 2000), ambiguous]
@@ -141,7 +163,7 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
     return new Response("{}", { headers: { "Content-Type": "application/json" } })
   }
 
-  const suggestion = await getSuggestion(prompt)
+  const suggestion = await getSuggestion(prompt, session_id ?? null)
 
   // Haiku explicitly says clear → trust it regardless of length
   if (suggestion.status === "clear") {
@@ -150,11 +172,10 @@ export async function handleUserPrompt(body: unknown): Promise<Response> {
 
   const reason = suggestion.status === "question"
     ? `[IA] ${suggestion.text}`
-    : `[heuristique] ${FALLBACK_REASON}`
+    : `[heuristique] ${getFallbackReason(prompt)}`
 
   const source = suggestion.status === "question" ? "ia" : "heuristique"
 
-  // Log to ambiguities — fire-and-forget
   db.query(
     "INSERT INTO ambiguities (session_id, tool_name, prompt_text, suggestion, source) VALUES ($1, $2, $3, $4, $5)",
     [session_id ?? null, null, prompt.slice(0, 500), reason, source]
