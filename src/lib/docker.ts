@@ -32,12 +32,12 @@ export async function composeUpAndWait(
     cwd,
     stdio: verbose ? "inherit" : "pipe",
   })
-  if (up.status !== 0) {
+  if (up.error || up.status !== 0) {
     const stderr = up.stderr?.toString().trim() ?? ""
     return {
       ok: false,
       durationMs: Date.now() - start,
-      error: stderr || `${runtime} compose up exit ${up.status}`,
+      error: up.error?.message ?? (stderr || `${runtime} compose up exit ${up.status}`),
     }
   }
 
@@ -49,6 +49,9 @@ export async function composeUpAndWait(
       ["compose", "exec", "-T", "postgres", "pg_isready", "-U", "claude", "-d", "claude_system"],
       { cwd, stdio: "pipe" }
     )
+    if (check.error) {
+      return { ok: false, durationMs: Date.now() - start, error: check.error.message }
+    }
     if (check.status === 0) return { ok: true, durationMs: Date.now() - start }
     if (verbose) process.stdout.write(".")
   }

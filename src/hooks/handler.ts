@@ -95,10 +95,10 @@ async function checkServerAndEnsureDb(): Promise<SessionStartCheck> {
   let apiKey: boolean | null = null
   let dbReady = false
   try {
-    const res = await fetch(`${SERVER_URL}/status`, { signal: AbortSignal.timeout(1500) })
+    const res = await fetch(`${SERVER_URL}/status`, { signal: AbortSignal.timeout(3000) })
     const status = await res.json() as { apiKey?: boolean; dbReady?: boolean }
     apiKey = Boolean(status.apiKey)
-    dbReady = Boolean(status.dbReady)
+    dbReady = ("dbReady" in status) ? Boolean(status.dbReady) : true
   } catch {
     return { apiKey: null, dbMessage: null }
   }
