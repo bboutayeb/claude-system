@@ -6,8 +6,8 @@ import { getAnthropicClient } from "../lib/anthropic-client"
 
 const AMBIGUITY_TRIGGERS = [
   // Déictiques purs — ambigus par construction, sans référent syntaxique
-  // ça/ceci/cela: \b does not work on non-ASCII chars in JS without the u flag
-  // — use explicit ASCII word-boundary lookaround instead
+  // ça/ceci/cela: in JavaScript, \b is based on ASCII \w only; the u flag does not
+  // make it Unicode-aware, so use explicit ASCII word-boundary lookaround instead
   /(?<![a-zA-Z0-9_])(ça|ceci|cela)(?![a-zA-Z0-9_])/i,
   // Back-references à une liste passée — quasi-toujours ambigus sans contexte
   /\bles? (recommandations?|suggestions?)\b/i,
