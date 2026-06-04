@@ -29,17 +29,38 @@ export async function composeUpAndWait(
   const timeoutMs = opts.pgReadyTimeoutMs ?? 30000
   const verbose = opts.verbose ?? false
 
-  const up = spawnSync(runtime, ["compose", "up", "-d"], {
+  let up = spawnSync(runtime, ["compose", "up", "-d"], {
     cwd,
     stdio: verbose ? "inherit" : "pipe",
     timeout: 30000,
   })
+
   if (up.error || up.status !== 0) {
-    const stderr = up.stderr?.toString().trim() ?? ""
-    return {
-      ok: false,
-      durationMs: Date.now() - start,
-      error: up.error?.message ?? (stderr || `${runtime} compose up exit ${up.status}`),
+    // Remove any containers stuck in "Created" state (nerdctl WSL2 crash recovery)
+    // then retry once — if compose failed for another reason, cleanup is a no-op.
+    const stuck = spawnSync(
+      runtime,
+      ["ps", "-a", "--filter", "label=com.docker.compose.project=claude-monitor", "--filter", "status=created", "-q"],
+      { stdio: "pipe", timeout: 5000 }
+    )
+    const ids = (stuck.stdout?.toString().trim() ?? "").split("\n").filter(Boolean)
+    for (const id of ids) {
+      spawnSync(runtime, ["rm", "-f", id], { stdio: "pipe", timeout: 5000 })
+    }
+
+    up = spawnSync(runtime, ["compose", "up", "-d"], {
+      cwd,
+      stdio: verbose ? "inherit" : "pipe",
+      timeout: 30000,
+    })
+
+    if (up.error || up.status !== 0) {
+      const stderr = up.stderr?.toString().trim() ?? ""
+      return {
+        ok: false,
+        durationMs: Date.now() - start,
+        error: up.error?.message ?? (stderr || `${runtime} compose up exit ${up.status}`),
+      }
     }
   }
 
